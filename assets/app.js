@@ -42,6 +42,11 @@
   let manual = store.get(KEY_STORE, {});
   let progress = store.get(KEY_PROGRESS, {});
 
+  // 记录题库原始答案，全部重置时把手填覆盖还原回去
+  const originalAnswers = new Map(
+    DATA.questions.map((q) => [q.id, { answer: q.answer, explain: q.explain, source: q.answerSource }])
+  );
+
   // 手填答案覆盖题库数据
   DATA.questions.forEach((q) => {
     const m = manual[q.id];
@@ -598,21 +603,74 @@
             <td class="num">${s.done ? Math.round((s.ok / s.done) * 100) + '%' : '—'}</td></tr>`).join('')}
         </tbody>
       </table>
-      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn" id="exportBtn">导出做题记录</button>
-        <button class="btn ghost" id="resetBtn">清空我的记录</button>
+        <button class="btn ghost" id="openReset">二刷 / 重置 →</button>
       </div>`);
 
     $('exportBtn').addEventListener('click', exportProgress);
-    $('resetBtn').addEventListener('click', () => {
-      if (!confirm('确定清空做题记录和手填答案？此操作不可撤销。')) return;
+    $('openReset').addEventListener('click', showResetModal);
+  }
+
+  function showResetModal() {
+    openModal('二刷 / 重置', `
+      <div class="reset-box" style="margin-top:0;border-top:0;padding-top:0">
+        <p class="reset-hint">
+          想从头再刷一遍，就点 <b>重置做题记录</b>：所有题回到未做状态，错题本清空，正确率归零，
+          <b>手填的答案会保留</b>。
+        </p>
+        <div class="reset-actions">
+          <button class="btn primary" id="resetProgress">重置做题记录</button>
+          <button class="btn ghost" id="resetWrong">只清错题本</button>
+          <button class="btn ghost danger" id="resetAll">全部重置（含手填）</button>
+        </div>
+        <p class="reset-hint" style="margin-top:12px">
+          当前：已做 <b>${Object.values(progress).filter((p) => p && typeof p.correct === 'boolean').length}</b> 题、
+          错题 <b>${Object.values(progress).filter((p) => p && p.correct === false).length}</b> 道、
+          手填答案 <b>${Object.keys(manual).length}</b> 条。
+        </p>
+      </div>`);
+    $('resetWrong').addEventListener('click', () => resetData('wrong'));
+    $('resetProgress').addEventListener('click', () => resetData('progress'));
+    $('resetAll').addEventListener('click', () => resetData('all'));
+  }
+
+  function resetData(mode) {
+    const message = mode === 'wrong'
+      ? '清空错题本？正确率与已做题数不受影响。'
+      : mode === 'progress'
+        ? '重置做题记录？\n所有题会回到未做状态，错题本清空，手填答案保留。'
+        : '全部重置？\n做题记录和手填答案都会清空，且无法恢复。';
+    if (!confirm(message)) return;
+
+    if (mode === 'wrong') {
+      Object.keys(progress).forEach((id) => {
+        const p = progress[id];
+        if (p && p.correct === false) delete progress[id];
+      });
+    } else if (mode === 'progress') {
+      progress = {};
+    } else {
       progress = {};
       manual = {};
-      store.set(KEY_PROGRESS, progress);
+      DATA.questions.forEach((q) => {
+        const orig = originalAnswers.get(q.id);
+        if (orig) {
+          q.answer = orig.answer;
+          q.explain = orig.explain;
+          q.answerSource = orig.source;
+        }
+      });
       store.set(KEY_STORE, manual);
-      closeModal();
-      location.reload();
-    });
+    }
+    store.set(KEY_PROGRESS, progress);
+
+    state.submitted = false;
+    state.revealed = false;
+    state.picked = [];
+    closeModal();
+    render();
+    renderCard();
   }
 
   function exportProgress() {
@@ -653,6 +711,7 @@
 
     $('wrongBtn').addEventListener('click', showWrongBook);
     $('statsBtn').addEventListener('click', showStats);
+    $('resetBtn').addEventListener('click', showResetModal);
     $('modalClose').addEventListener('click', closeModal);
     $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
 

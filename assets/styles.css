@@ -580,3 +580,24 @@ button, input { font: inherit; color: inherit; }
   .verdict { font-size: 15px; padding: 11px 13px; }
   .card-actions .btn { flex: 1 1 auto; }
 }
+/* ---------- 二刷 / 重置 ---------- */
+.reset-box {
+  margin-top: 18px;
+  border-top: 1px dashed var(--line);
+  padding-top: 14px;
+}
+.reset-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.reset-hint {
+  margin: 0 0 10px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.reset-hint b { color: var(--ink-2); }
+.reset-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn.danger { color: var(--bad); border-color: #e5c2b9; }
+.btn.danger:hover { background: #fdf1ee; border-color: #d9a99d; }
+
+@media (max-width: 900px) {
+  .reset-actions .btn { flex: 1 1 auto; }
+}
