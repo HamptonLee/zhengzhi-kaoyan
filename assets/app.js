@@ -176,9 +176,11 @@
     $('modeBtn').textContent = '模式 · ' + (state.quiz ? '自测' : '背题');
     const wrongTotal = Object.values(progress).filter((p) => p && p.correct === false).length;
     $('wrongCount').textContent = String(wrongTotal);
+    const aiTotal = DATA.questions.filter((q) => q.answerSource === 'generated').length;
     $('brandSub').textContent =
       `1994–2025 · ${DATA.questions.length} 题 · 已对 ${answeredCount()} 题` +
-      (DATA.meta && DATA.meta.answered ? ` · 已导答案 ${DATA.meta.answered}` : ' · 答案待导入');
+      (DATA.meta && DATA.meta.answered ? ` · 已导答案 ${DATA.meta.answered}` : ' · 答案待导入') +
+      (aiTotal ? `（AI 待校对 ${aiTotal}）` : '');
   }
 
   /* ---------------- 侧栏题号 ---------------- */
@@ -296,13 +298,17 @@
     let answerBox = '';
     if (revealed) {
       if (q.answer) {
-        const srcLabel = q.answerSource === 'manual' ? '手动录入' : q.answerSource === 'generated' ? 'AI 生成讲解' : '导入答案';
+        const srcLabel = q.answerSource === 'manual' ? '手动录入' : q.answerSource === 'generated' ? 'AI 生成 · 待校对' : '导入答案';
+        const aiNote = q.answerSource === 'generated'
+          ? '<div class="ai-note">本题答案与讲解由 AI 生成，尚未人工核对，仅供参考；发现错误可在下方手填覆盖。</div>'
+          : '';
         answerBox = `<div class="answer-box">
           <div class="answer-line">
             <span class="label">答案</span>
             <span class="value">${esc(q.answer)}</span>
             <span class="src">${srcLabel}</span>
           </div>
+          ${aiNote}
           <p class="explain ${q.explain ? '' : 'empty'}">${q.explain ? esc(q.explain) : '这道题暂时只有答案，还没有讲解。'}</p>
         </div>`;
       } else {
