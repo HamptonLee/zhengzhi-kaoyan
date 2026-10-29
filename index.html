@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>政治真题速查 · 497 题</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">政</span>
+      <div>
+        <h1>政治真题速查</h1>
+        <p class="brand-sub" id="brandSub">1994–2025 · 加载中…</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="btn ghost" id="randomBtn" title="随机抽一题（R）">随机一题</button>
+      <button class="btn ghost" id="wrongBtn" title="错题本">错题本 <span class="pill" id="wrongCount">0</span></button>
+      <button class="btn ghost" id="statsBtn" title="统计">统计</button>
+      <button class="btn" id="modeBtn" title="切换背题 / 自测（M）">自测模式</button>
+    </div>
+  </header>
+
+  <section class="filters">
+    <div class="filter-row" id="subjectRow"></div>
+    <div class="filter-row" id="partRow" hidden></div>
+    <div class="filter-row main-row">
+      <div class="segmented" id="typeRow"></div>
+      <form class="jump" id="jumpForm" autocomplete="off">
+        <label for="noInput">题号</label>
+        <input id="noInput" inputmode="numeric" pattern="[0-9]*" placeholder="如 12" aria-label="题号">
+        <button class="btn primary" type="submit">查询</button>
+      </form>
+      <div class="search">
+        <input id="searchInput" placeholder="搜题干关键词 / 年份，如 剩余价值、2020" aria-label="搜索">
+        <div class="suggest" id="suggest" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <main class="layout">
+    <section class="card" id="card" aria-live="polite"></section>
+    <aside class="side">
+      <div class="side-head">
+        <span id="sideTitle">本题区题目</span>
+        <span class="side-hint" id="sideHint"></span>
+      </div>
+      <div class="numgrid" id="numGrid"></div>
+      <div class="legend">
+        <span><i class="dot ok"></i>答对</span>
+        <span><i class="dot bad"></i>答错</span>
+        <span><i class="dot seen"></i>看过答案</span>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="foot">
+    <span>← → 切题 · 1–4 选项 · Enter 提交/下一题 · / 聚焦题号 · R 随机</span>
+    <span id="progressText"></span>
+  </footer>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-body" role="dialog" aria-modal="true">
+    <header class="modal-head">
+      <h2 id="modalTitle">错题本</h2>
+      <button class="btn ghost" id="modalClose">关闭</button>
+    </header>
+    <div class="modal-content" id="modalContent"></div>
+  </div>
+</div>
+
+<script src="data/questions.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

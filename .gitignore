@@ -1,0 +1,12 @@
+# 本地生成 / 派生文件，不入库
+data/questions.json
+data/merged.json
+data/answers.json
+build/_raw_paragraphs.json
+build/__pycache__/
+import/答案导入模板.csv
+
+# 杂项
+*.log
+.DS_Store
+Thumbs.db
