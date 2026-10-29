@@ -269,9 +269,20 @@
         if (picked && !(q.answer || '').includes(o.key)) cls += ' wrong';
       }
       return `<button class="${cls}" data-opt="${o.key}" ${showAnswer ? 'disabled' : ''}>
-        <span class="letter">${o.key}</span><span>${esc(o.text)}</span>
+        <span class="letter">${o.key}</span><span class="opt-text">${esc(o.text)}</span>
+        ${showAnswer && answerLetters.includes(o.key) ? '<span class="opt-mark ok">✓ 正确</span>' : ''}
+        ${showAnswer && picked && !answerLetters.includes(o.key) ? '<span class="opt-mark bad">✗ 你选的</span>' : ''}
       </button>`;
     }).join('');
+
+    // 判分结果横幅：手机上一眼能看清对错
+    let verdict = '';
+    if (solved && state.submitted) {
+      const mine = (p.picked || []).slice().sort().join('');
+      verdict = p.correct
+        ? `<div class="verdict ok">✅ 答对了<span>答案 ${esc(q.answer)}</span></div>`
+        : `<div class="verdict bad">❌ 答错了<span>你选 ${esc(mine || '—')} ｜ 正确答案 ${esc(q.answer)}</span></div>`;
+    }
 
     let actions = '';
     if (state.quiz) {
@@ -322,6 +333,7 @@
     cardEl.innerHTML = `${head}${dupeRow}
       <p class="stem">${esc(q.stem)}</p>
       <div class="options">${options}</div>
+      ${verdict}
       <div class="card-actions">${actions}</div>
       ${answerBox}`;
 
@@ -364,6 +376,7 @@
         renderCard();
         renderGrid();
         renderFilters();
+        if (state.revealed) scrollToVerdict();
       });
     }
 
@@ -425,6 +438,16 @@
     renderCard();
     renderGrid();
     renderFilters();
+    scrollToVerdict();
+  }
+
+  // 手机上提交后自动把判分横幅滚到视野中间，否则答案在屏幕外
+  function scrollToVerdict() {
+    if (!window.matchMedia('(max-width: 900px)').matches) return;
+    setTimeout(() => {
+      const v = cardEl.querySelector('.verdict') || cardEl.querySelector('.answer-box');
+      if (v) v.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
   }
 
   function goRelative(delta) {

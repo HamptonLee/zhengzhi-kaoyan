@@ -537,3 +537,46 @@ button, input { font: inherit; color: inherit; }
   font-size: 13px;
   line-height: 1.6;
 }
+/* ---------- 判分反馈 ---------- */
+.option .opt-text { flex: 1; }
+.opt-mark {
+  margin-left: 8px;
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.opt-mark.ok { color: var(--ok); }
+.opt-mark.bad { color: var(--bad); }
+
+.verdict {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.verdict.ok { background: var(--ok-soft); color: #1f6b43; border: 1px solid #bfdcc9; }
+.verdict.bad { background: var(--bad-soft); color: #a03a28; border: 1px solid #ecc5bb; }
+.verdict span { font-size: 13px; font-weight: 400; opacity: .85; }
+
+@media (max-width: 900px) {
+  .brand-mark { width: 34px; height: 34px; font-size: 17px; border-radius: 9px; }
+  .brand h1 { font-size: 17px; }
+  .brand-sub { font-size: 11.5px; line-height: 1.45; }
+  .top-actions { width: 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .top-actions .btn { flex: 0 0 auto; padding: 6px 10px; font-size: 13px; }
+  .filters { padding: 8px 10px; gap: 6px; }
+  .chip { padding: 4px 9px; font-size: 14px; }
+  .jump { width: 100%; }
+  .jump input { flex: 1; }
+  .card { padding: 14px 14px 16px; }
+  .stem { font-size: 16px; line-height: 1.85; }
+  .option { padding: 10px 12px; font-size: 15px; }
+  .verdict { font-size: 15px; padding: 11px 13px; }
+  .card-actions .btn { flex: 1 1 auto; }
+}
