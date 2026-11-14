@@ -19,7 +19,21 @@
   const KEY_STORE = 'zz.manual.v1';
   const KEY_PROGRESS = 'zz.progress.v1';
   const KEY_SETTINGS = 'zz.settings.v1';
-  const AUTO_NEXT_MS = 900; // 答对后停留多久再翻页，留出看「✅ 答对了」的时间
+  // 答对后停留多久再翻页：默认 0.9 秒，可在「统计」→ 做题偏好里调
+  const DEFAULT_AUTO_NEXT_MS = 900;
+  const AUTO_NEXT_MS_OPTIONS = [400, 600, 900, 1500, 2000, 3000];
+
+  function clampAutoNextMs(v) {
+    const n = Math.round(Number(v));
+    if (!isFinite(n) || n <= 0) return DEFAULT_AUTO_NEXT_MS;
+    return Math.min(5000, Math.max(200, n));
+  }
+
+  // 900 → "0.9 秒"，2000 → "2 秒"
+  function fmtDelay(ms) {
+    const s = Math.round(ms / 100) / 10;
+    return (s % 1 === 0 ? String(s) : s.toFixed(1)) + ' 秒';
+  }
 
   // 答对自动翻页的定时器：翻题、切范围、开弹层时都要取消，避免跳两题
   let autoNextTimer = null;
@@ -85,7 +99,8 @@
     revealed: false,
     submitted: false,
     quiz: settings.quiz !== undefined ? settings.quiz !== false : hasAnswers,
-    autoNext: settings.autoNext !== false // 答对自动下一题，默认开
+    autoNext: settings.autoNext !== false, // 答对自动下一题，默认开
+    autoNextMs: clampAutoNextMs(settings.autoNextMs) // 停留时长，默认 900ms
   };
 
   if (state.subject !== '马克思主义哲学') state.part = '';
@@ -238,7 +253,7 @@
   function saveSettings() {
     store.set(KEY_SETTINGS, {
       subject: state.subject, part: state.part, type: state.type, quiz: state.quiz, id: state.id,
-      autoNext: state.autoNext
+      autoNext: state.autoNext, autoNextMs: state.autoNextMs
     });
   }
 
@@ -319,7 +334,7 @@
         const hint = p && p.correct
           ? (!canAdvance
               ? '答对了 · 已经是本题区最后一题'
-              : state.autoNext ? '答对了，自动进入下一题…' : '答对了 · 点「下一题」继续')
+              : state.autoNext ? `答对了，${fmtDelay(state.autoNextMs)}后自动进入下一题…` : '答对了 · 点「下一题」继续')
           : '答错了 · 已留在本题，解析见下方';
         actions = `<button class="btn primary" id="nextBtn" ${canAdvance ? '' : 'disabled'}>下一题 →</button>
           <button class="btn ghost" id="prevBtn" ${idx <= 0 ? 'disabled' : ''}>← 上一题</button>
@@ -491,7 +506,7 @@
       // 这段时间里用户可能自己翻了页、切了范围或打开弹层，确认还停在原题再翻
       if (state.id !== q.id || !state.submitted) return;
       goRelative(1);
-    }, AUTO_NEXT_MS);
+    }, state.autoNextMs);
   }
 
   function goRelative(delta) {
@@ -648,6 +663,16 @@
           <input type="checkbox" id="autoNextCb" ${state.autoNext ? 'checked' : ''}>
           <span>答对后自动进入下一题</span>
         </label>
+        <label class="pref pref-delay">
+          <span>停留</span>
+          <select id="autoNextMs" aria-label="答对后自动跳转的停留时长">
+            ${[...new Set([...AUTO_NEXT_MS_OPTIONS, state.autoNextMs])]
+              .sort((a, b) => a - b)
+              .map((ms) => `<option value="${ms}"${ms === state.autoNextMs ? ' selected' : ''}>${fmtDelay(ms)}</option>`)
+              .join('')}
+          </select>
+          <span>再翻页</span>
+        </label>
         <span class="pref-hint">答错则停留在本题，自动展开解析</span>
       </div>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -661,6 +686,14 @@
     if (autoNextCb) {
       autoNextCb.addEventListener('change', (e) => {
         state.autoNext = e.target.checked;
+        saveSettings();
+        renderCard();
+      });
+    }
+    const autoNextMsSel = $('autoNextMs');
+    if (autoNextMsSel) {
+      autoNextMsSel.addEventListener('change', (e) => {
+        state.autoNextMs = clampAutoNextMs(e.target.value);
         saveSettings();
         renderCard();
       });
