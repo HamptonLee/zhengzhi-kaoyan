@@ -264,22 +264,43 @@
   function kwTip(item) {
     if (item.note) return item.note;
     if (item.k) return '知识点 ' + item.k + (item.page ? ' · ' + item.page : '');
-    return '';
+    if (item.c === 'core') return '核心词：答案的落点';
+    if (item.c === 'none') return '手册暂未收录，但本题常考';
+    if (item.c === 'ok') return '手册里的正误判断';
+    return '限定 / 陷阱词：注意前提、主体与范围';
   }
 
-  // 在已转义的文本上包 <span class="kw kw-xxx" data-tip>；只替换首次出现
+  // 在已转义的文本上包 <span class="kw kw-xxx" data-tip>；
+  // 一遍扫描：每次只从「还没包过的纯文本」里找最靠前（同位置取最长）的标记，
+  // 插进去的 span 不参与后续查找，避免标记串到别的提示文字里把 HTML 弄坏。
   function markKw(escapedText, items) {
     if (!state.showKw || !items || !items.length) return escapedText;
-    let out = escapedText;
     const clsOf = { core: 'kw kw-core', limit: 'kw kw-limit', none: 'kw kw-none', ok: 'kw kw-ok' };
-    items.forEach((item) => {
-      const needle = esc(item.t);
-      if (!needle || out.indexOf(needle) < 0) return;
+    const pend = items
+      .map((item) => ({ item, needle: esc(item.t) }))
+      .filter((x) => x.needle && escapedText.indexOf(x.needle) >= 0);
+
+    let out = '';
+    let rest = escapedText;
+    while (pend.length && rest) {
+      let hit = -1;
+      let pick = null;
+      pend.forEach((x, i) => {
+        const at = rest.indexOf(x.needle);
+        if (at < 0) return;
+        if (hit < 0 || at < hit || (at === hit && x.needle.length > pend[hit].needle.length)) {
+          hit = at;
+          pick = i;
+        }
+      });
+      if (pick === null) break;
+      const { item, needle } = pend.splice(pick, 1)[0];
       const cls = clsOf[item.c] || clsOf.core;
-      out = out.replace(needle,
-        '<span class="' + cls + '" data-tip="' + esc(kwTip(item)) + '">' + needle + '</span>');
-    });
-    return out;
+      out += rest.slice(0, hit)
+        + '<span class="' + cls + '" data-tip="' + esc(kwTip(item)) + '">' + needle + '</span>';
+      rest = rest.slice(hit + needle.length);
+    }
+    return out + rest;
   }
 
   function renderCard() {
