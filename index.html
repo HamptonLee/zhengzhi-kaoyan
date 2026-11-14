@@ -86,7 +86,7 @@
 </div>
 
 <div class="kb-overlay" id="kbOverlay" hidden>
-  <div class="kb-shell" role="dialog" aria-modal="true" aria-label="知识点手册卡片">
+  <div class="kb-shell" role="dialog" aria-modal="true" aria-label="知识点手册（按 PDF 原页排版）">
     <header class="kb-head">
       <div class="kb-heading">
         <h2>知识点手册</h2>
@@ -94,20 +94,7 @@
       </div>
       <button class="btn ghost" id="kbClose">关闭</button>
     </header>
-    <div class="kb-tools">
-      <input id="kbSearch" class="kb-search" placeholder="搜编号 / 标题 / 关键词，如 001、寓于、剩余价值" aria-label="搜索知识点">
-      <div class="kb-seg" id="kbFilter">
-        <button data-filter="all" class="active">全部</button>
-        <button data-filter="todo">未复习</button>
-        <button data-filter="done">已复习</button>
-      </div>
-      <button class="btn ghost kb-tocbtn" id="kbTocBtn">目录</button>
-    </div>
-    <div class="kb-chapters" id="kbChapters"></div>
-    <div class="kb-body">
-      <aside class="kb-toc" id="kbToc"></aside>
-      <section class="kb-deck" id="kbDeck"></section>
-    </div>
+    <div class="kb-deck" id="kbDeck"></div>
   </div>
 </div>
 
@@ -138,6 +125,7 @@
 <script src="data/questions.js"></script>
 <script src="data/keywords.js"></script>
 <script src="data/handbook.js"></script>
+<script src="data/manual.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

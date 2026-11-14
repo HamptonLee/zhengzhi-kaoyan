@@ -1062,100 +1062,86 @@
   function kbIsDone(k) { return !!kbStore()[k]; }
   function kbDoneCount() { return KB_POINTS.filter((p) => kbIsDone(p.k)).length; }
 
-  const kbView = { q: '', filter: 'all', chapter: 'all', page: null, idx: 0 };
+  /* ---------------- 知识点手册：按 PDF 原页、原顺序直排 ---------------- */
+  const MAN_PAGES = (window.ZZ_MANUAL && window.ZZ_MANUAL.pages) || [];
+  let manBuilt = false;
 
-  function kbList() {
-    const needle = kbView.q.trim().toLowerCase();
-    return KB_POINTS.filter((p) => {
-      if (kbView.chapter !== 'all' && p.chapter !== kbView.chapter) return false;
-      if (kbView.page && p.page !== kbView.page) return false;
-      const done = kbIsDone(p.k);
-      if (kbView.filter === 'todo' && done) return false;
-      if (kbView.filter === 'done' && !done) return false;
-      if (!needle) return true;
-      if (p.k.indexOf(needle) >= 0) return true;
-      if ((p.title || '').toLowerCase().indexOf(needle) >= 0) return true;
-      return (p.items || []).some((it) =>
-        (it.t || '').toLowerCase().indexOf(needle) >= 0 || (it.why || '').toLowerCase().indexOf(needle) >= 0);
-    });
+  function kwCls(c) {
+    return c === 'core' ? 'kw-core' : c === 'ok' ? 'kw-ok' : c === 'none' ? 'kw-none' : 'kw-limit';
   }
 
-  function kbCurrent() {
-    const list = kbList();
-    if (!list.length) return null;
-    if (kbView.idx > list.length - 1) kbView.idx = list.length - 1;
-    if (kbView.idx < 0) kbView.idx = 0;
-    return list[kbView.idx];
+  // 在纯文本上按手册彩色词条加高亮：一遍扫描，取最靠前（同位置取最长）的一条，互不重叠
+  function kbHl(text, items) {
+    const list = (items || []).filter((it) => it && it.t);
+    if (!list.length) return esc(text);
+    let out = '';
+    let rest = text;
+    while (rest.length) {
+      let at = -1;
+      let pick = null;
+      list.forEach((it) => {
+        const p = rest.indexOf(it.t);
+        if (p < 0) return;
+        if (at < 0 || p < at || (p === at && it.t.length > pick.t.length)) { at = p; pick = it; }
+      });
+      if (at < 0) { out += esc(rest); break; }
+      out += esc(rest.slice(0, at));
+      out += '<span class="kw ' + kwCls(pick.c) + '">' + esc(pick.t) + '</span>';
+      rest = rest.slice(at + pick.t.length);
+    }
+    return out;
   }
 
-  function kbItemClass(c) {
-    return c === 'core' ? 'kb-item core' : c === 'ok' ? 'kb-item ok' : c === 'none' ? 'kb-item none' : 'kb-item limit';
+  function manCard(card) {
+    const point = KB_BY_K.get(card.k) || { items: [] };
+    const rel = kbRelated(card.k);
+    const done = kbIsDone(card.k);
+    return '<article class="mcard" id="kbCard-' + esc(card.k) + '" data-k="' + esc(card.k) + '">'
+      + '<div class="mcard-top">'
+      + '<span class="mcard-k">知识点 ' + esc(card.k) + '</span>'
+      + '<label class="mcard-done"><input type="checkbox" data-done="' + esc(card.k) + '"'
+      + (done ? ' checked' : '') + '><span>已复习</span></label>'
+      + '</div>'
+      + '<h3 class="mcard-title">' + esc((KB_BY_K.get(card.k) || {}).title || card.title) + '</h3>'
+      + '<div class="mcard-body">'
+      + (card.paras || []).map((p) => '<p>' + kbHl(p, point.items) + '</p>').join('')
+      + '</div>'
+      + (rel.length
+        ? '<div class="mcard-rel"><div class="mcard-rel-head">相关真题 ' + rel.length + ' 道</div>'
+          + rel.map((q) => '<button class="kb-q" data-q="' + esc(q.id) + '">'
+            + esc(q.type) + ' ' + q.no + '<i>' + q.year + '</i></button>').join('')
+          + '</div>'
+        : '')
+      + '</article>';
+  }
+
+  function buildManual() {
+    const deck = $('kbDeck');
+    deck.innerHTML = MAN_PAGES.map((page) => {
+      const n = page.cols.reduce((sum, col) => sum + col.length, 0);
+      const head = '<div class="mpage-head">'
+        + '<span class="mpage-no">' + esc(page.printed) + '</span>'
+        + (page.sections || []).map((s) => '<span class="mpage-tag">' + esc(s) + '</span>').join('')
+        + '<span class="mpage-count">' + n + ' 张</span>'
+        + '</div>';
+      const cols = page.cols.map((col) => '<div class="mpage-col">'
+        + col.map(manCard).join('') + '</div>').join('');
+      return '<section class="mpage" data-page="' + esc(page.printed) + '">' + head
+        + '<div class="mpage-cols">' + cols + '</div></section>';
+    }).join('');
+    manBuilt = true;
+  }
+
+  function kbSubText() {
+    const total = KB_POINTS.length;
+    const done = kbDoneCount();
+    return '手册 P05–P29 · ' + MAN_PAGES.length + ' 页 · ' + total + ' 张卡 · 已复习 ' + done + ' / ' + total;
   }
 
   function renderKb() {
     if ($('kbOverlay').hidden) return;
-    const list = kbList();
-    const cur = kbCurrent();
-    const doneAll = kbDoneCount();
-
-    $('kbSub').textContent = '知识点 001–100 · ' + KB_POINTS.length + ' 张卡 · 已复习 '
-      + doneAll + ' / ' + KB_POINTS.length + (kbView.page ? ' · 只看 ' + kbView.page : '');
-
-    // 章节 chips
-    $('kbChapters').innerHTML = [{ id: 'all', name: '全部章节' }, ...KB_CHAPTERS].map((c) => {
-      const n = c.id === 'all' ? KB_POINTS.length : KB_POINTS.filter((p) => p.chapter === c.id).length;
-      return `<button class="chip${kbView.chapter === c.id ? ' active' : ''}" data-chapter="${esc(c.id)}">${esc(c.name)}<i>${n}</i></button>`;
-    }).join('');
-
-    // 筛选状态
-    $('kbFilter').querySelectorAll('button').forEach((b) => {
-      b.classList.toggle('active', b.dataset.filter === kbView.filter);
-    });
-
-    // 目录
-    $('kbToc').innerHTML = KB_CHAPTERS.map((c) => {
-      const pts = KB_POINTS.filter((p) => p.chapter === c.id);
-      if (!pts.length) return '';
-      return `<div class="kb-toc-group">
-        <div class="kb-toc-head">${esc(c.name)}<span>${esc(c.pages)}</span></div>
-        ${pts.map((p) => `<button class="kb-toc-item${cur && cur.k === p.k ? ' on' : ''}${kbIsDone(p.k) ? ' done' : ''}" data-k="${esc(p.k)}">
-          <span class="k">${esc(p.k)}</span><span class="t">${esc(p.title)}</span><i>${kbIsDone(p.k) ? '✓' : ''}</i></button>`).join('')}
-      </div>`;
-    }).join('');
-
-    // 卡片
-    const deck = $('kbDeck');
-    if (!cur) {
-      deck.innerHTML = '<div class="empty-state">没有符合条件的知识点，换个关键词或筛选项试试。</div>';
-      return;
-    }
-    const rel = kbRelated(cur.k);
-    const chap = KB_CHAP_NAME.get(cur.chapter) || '';
-    deck.innerHTML = `
-      <article class="kb-card" data-card="${esc(cur.k)}">
-        <div class="kb-card-top">
-          <button class="kb-k" data-jump="${esc(cur.k)}" title="在目录里定位这一条">知识点 ${esc(cur.k)}</button>
-          <button class="kb-page${kbView.page ? ' on' : ''}" data-page="${esc(cur.page)}" title="只看这一页">${esc(cur.page)}</button>
-          <span class="kb-chap">${esc(chap)}</span>
-          <label class="kb-done"><input type="checkbox" id="kbDoneCb"${kbIsDone(cur.k) ? ' checked' : ''}><span>已复习</span></label>
-        </div>
-        <h3 class="kb-title">${esc(cur.title)}</h3>
-        <ul class="kb-items">
-          ${(cur.items || []).length
-            ? cur.items.map((it) => `<li class="${kbItemClass(it.c)}"><b>${esc(it.t)}</b>${it.why ? `<span>${esc(it.why)}</span>` : ''}</li>`).join('')
-            : '<li class="kb-item none"><b>本页为章节导览</b><span>看右侧目录继续</span></li>'}
-        </ul>
-        <div class="kb-rel">
-          <div class="kb-rel-head">关联真题${rel.length ? `<span>${rel.length} 道，点一下回到题目</span>` : '<span>题库里暂无这题的标注</span>'}</div>
-          ${rel.length ? `<div class="kb-rel-list">${rel.map((q) => `<button class="kb-q" data-q="${esc(q.id)}">${esc(q.type)} ${q.no}<i>${q.year}</i></button>`).join('')}</div>` : ''}
-        </div>
-        <div class="kb-nav">
-          <button class="btn ghost" data-nav="-1"${kbView.idx <= 0 ? ' disabled' : ''}>← 上一张</button>
-          <span class="kb-pos">${kbView.idx + 1} / ${list.length}</span>
-          <span class="kb-hint">左右滑动翻卡</span>
-          <button class="btn ghost" data-nav="1"${kbView.idx >= list.length - 1 ? ' disabled' : ''}>下一张 →</button>
-        </div>
-      </article>`;
+    if (!manBuilt) buildManual();
+    $('kbSub').textContent = kbSubText();
   }
 
   function openKb(k) {
@@ -1163,66 +1149,22 @@
     clearAutoNext();
     $('kbOverlay').hidden = false;
     document.body.classList.add('kb-open');
-    if (k && KB_BY_K.has(k)) {
-      kbView.chapter = 'all';
-      kbView.filter = 'all';
-      kbView.page = null;
-      kbView.q = '';
-      $('kbSearch').value = '';
-    }
-    const list = kbList();
-    const at = k ? list.findIndex((p) => p.k === k) : -1;
-    kbView.idx = at >= 0 ? at : 0;
+    if (!manBuilt) buildManual();
     renderKb();
-    $('kbDeck').scrollTop = 0;
-    $('kbToc').scrollTop = 0;
+    const deck = $('kbDeck');
+    const target = k ? $('kbCard-' + k) : null;
+    if (target) {
+      target.scrollIntoView({ block: 'center' });
+      target.classList.add('hit');
+      setTimeout(() => target.classList.remove('hit'), 1600);
+    } else {
+      deck.scrollTop = 0;
+    }
   }
 
   function closeKb() {
     $('kbOverlay').hidden = true;
     document.body.classList.remove('kb-open');
-  }
-
-  function kbGo(delta) {
-    const list = kbList();
-    if (!list.length) return;
-    const next = kbView.idx + delta;
-    if (next < 0 || next > list.length - 1) return;
-    kbView.idx = next;
-    renderKb();
-    $('kbDeck').scrollTop = 0;
-    const on = $('kbToc').querySelector('.kb-toc-item.on');
-    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
-  }
-
-  function kbSelect(k) {
-    let list = kbList();
-    let at = list.findIndex((p) => p.k === k);
-    if (at < 0) {
-      kbView.chapter = 'all';
-      kbView.filter = 'all';
-      kbView.page = null;
-      kbView.q = '';
-      $('kbSearch').value = '';
-      renderKb();
-      list = kbList();
-      at = list.findIndex((p) => p.k === k);
-    }
-    if (at < 0) return;
-    kbView.idx = at;
-    renderKb();
-    $('kbDeck').scrollTop = 0;
-  }
-
-  function kbFocusToc(k) {
-    const toc = $('kbToc');
-    toc.classList.add('open');
-    const item = toc.querySelector(`[data-k="${k}"]`);
-    if (item) {
-      toc.querySelectorAll('.kb-toc-item').forEach((el) => el.classList.remove('hit'));
-      item.classList.add('hit');
-      item.scrollIntoView({ block: 'center' });
-    }
   }
 
   function kbOpenQuestion(id) {
@@ -1239,65 +1181,21 @@
   function bindKb() {
     $('kbBtn').addEventListener('click', () => openKb());
     $('kbClose').addEventListener('click', closeKb);
-    $('kbTocBtn').addEventListener('click', () => $('kbToc').classList.toggle('open'));
-
-    $('kbSearch').addEventListener('input', (e) => {
-      kbView.q = e.target.value;
-      kbView.idx = 0;
-      renderKb();
-    });
-    $('kbSearch').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); kbGo(1); }
-    });
 
     $('kbOverlay').addEventListener('click', (e) => {
       const t = e.target;
       if (t.id === 'kbOverlay') { closeKb(); return; }
-      const chap = t.closest('[data-chapter]');
-      if (chap) { kbView.chapter = chap.dataset.chapter; kbView.page = null; kbView.idx = 0; renderKb(); return; }
-      const filter = t.closest('[data-filter]');
-      if (filter) { kbView.filter = filter.dataset.filter; kbView.idx = 0; renderKb(); return; }
-      const page = t.closest('[data-page]');
-      if (page) { kbView.page = kbView.page === page.dataset.page ? null : page.dataset.page; kbView.idx = 0; renderKb(); return; }
-      const toc = t.closest('[data-k]');
-      if (toc) { kbSelect(toc.dataset.k); return; }
-      const jump = t.closest('[data-jump]');
-      if (jump) { kbFocusToc(jump.dataset.jump); return; }
       const rel = t.closest('[data-q]');
-      if (rel) { kbOpenQuestion(rel.dataset.q); return; }
-      const nav = t.closest('[data-nav]');
-      if (nav) { kbGo(Number(nav.dataset.nav)); }
+      if (rel) { kbOpenQuestion(rel.dataset.q); }
     });
 
     $('kbOverlay').addEventListener('change', (e) => {
-      if (e.target.id !== 'kbDoneCb') return;
-      const cur = kbCurrent();
-      if (!cur) return;
-      if (e.target.checked) kbStore()[cur.k] = Date.now();
-      else delete kbStore()[cur.k];
+      const k = e.target.dataset ? e.target.dataset.done : null;
+      if (!k) return;
+      if (e.target.checked) kbStore()[k] = Date.now();
+      else delete kbStore()[k];
       saveSettings();
-      renderKb();
-    });
-
-    // 手机左右滑动翻卡
-    const deck = $('kbDeck');
-    let sx = 0; let sy = 0; let swipe = false;
-    deck.addEventListener('touchstart', (e) => {
-      const t0 = e.touches[0];
-      sx = t0.clientX; sy = t0.clientY; swipe = false;
-    }, { passive: true });
-    deck.addEventListener('touchmove', (e) => {
-      const t0 = e.touches[0];
-      const dx = t0.clientX - sx;
-      const dy = t0.clientY - sy;
-      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) swipe = true;
-    }, { passive: true });
-    deck.addEventListener('touchend', (e) => {
-      if (!swipe) return;
-      const t0 = e.changedTouches[0];
-      const dx = t0.clientX - sx;
-      if (Math.abs(dx) < 46) return;
-      kbGo(dx < 0 ? 1 : -1);
+      $('kbSub').textContent = kbSubText();
     });
   }
 
