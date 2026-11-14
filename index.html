@@ -19,6 +19,7 @@
     <div class="top-actions">
       <button class="btn ghost" id="randomBtn" title="随机抽一题（R）">随机一题</button>
       <button class="btn ghost" id="wrongBtn" title="错题本">错题本 <span class="pill" id="wrongCount">0</span></button>
+      <button class="btn ghost" id="kbBtn" title="知识点手册卡片（K）">知识点</button>
       <button class="btn ghost" id="statsBtn" title="统计">统计</button>
       <button class="btn ghost" id="resetBtn" title="二刷 / 重置">二刷·重置</button>
       <button class="btn" id="modeBtn" title="切换背题 / 自测（M）">自测模式</button>
@@ -59,7 +60,7 @@
   </main>
 
   <footer class="foot">
-    <span>← → 切题 · 1–4 选项 · Enter 提交/下一题 · / 聚焦题号 · R 随机</span>
+    <span>← → 切题 · 1–4 选项 · Enter 提交/下一题 · / 聚焦题号 · R 随机 · K 知识点卡片</span>
     <span id="progressText"></span>
   </footer>
 </div>
@@ -74,8 +75,35 @@
   </div>
 </div>
 
+<div class="kb-overlay" id="kbOverlay" hidden>
+  <div class="kb-shell" role="dialog" aria-modal="true" aria-label="知识点手册卡片">
+    <header class="kb-head">
+      <div class="kb-heading">
+        <h2>知识点手册</h2>
+        <p id="kbSub">加载中…</p>
+      </div>
+      <button class="btn ghost" id="kbClose">关闭</button>
+    </header>
+    <div class="kb-tools">
+      <input id="kbSearch" class="kb-search" placeholder="搜编号 / 标题 / 关键词，如 001、寓于、剩余价值" aria-label="搜索知识点">
+      <div class="kb-seg" id="kbFilter">
+        <button data-filter="all" class="active">全部</button>
+        <button data-filter="todo">未复习</button>
+        <button data-filter="done">已复习</button>
+      </div>
+      <button class="btn ghost kb-tocbtn" id="kbTocBtn">目录</button>
+    </div>
+    <div class="kb-chapters" id="kbChapters"></div>
+    <div class="kb-body">
+      <aside class="kb-toc" id="kbToc"></aside>
+      <section class="kb-deck" id="kbDeck"></section>
+    </div>
+  </div>
+</div>
+
 <script src="data/questions.js"></script>
 <script src="data/keywords.js"></script>
+<script src="data/handbook.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>

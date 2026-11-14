@@ -255,7 +255,8 @@
   function saveSettings() {
     store.set(KEY_SETTINGS, {
       subject: state.subject, part: state.part, type: state.type, quiz: state.quiz, id: state.id,
-      autoNext: state.autoNext, autoNextMs: state.autoNextMs, showKw: state.showKw
+      autoNext: state.autoNext, autoNextMs: state.autoNextMs, showKw: state.showKw,
+      kb: settings.kb || {} // 知识点卡片的复习进度（k → 勾选时间戳）
     });
   }
 
@@ -410,6 +411,7 @@
           ${aiNote}
           <div class="explain-head">解析</div>
           <p class="explain ${q.explain ? '' : 'empty'}">${q.explain ? esc(q.explain) : '这道题暂时只有答案，还没有讲解。'}</p>
+          ${kpRow(q)}
         </div>`;
       } else {
         answerBox = `<div class="pending">
@@ -432,6 +434,11 @@
   function bindCardEvents(q, list, idx, revealed) {
     cardEl.querySelectorAll('[data-jump]').forEach((a) => {
       a.addEventListener('click', (e) => { e.preventDefault(); showQuestion(a.dataset.jump, false); });
+    });
+
+    // 解析下方「考点卡片」→ 打开对应知识点卡
+    cardEl.querySelectorAll('[data-kp]').forEach((b) => {
+      b.addEventListener('click', () => openKb(b.dataset.kp));
     });
 
     cardEl.querySelectorAll('.option').forEach((btn) => {
@@ -730,6 +737,11 @@
         </label>
         <span class="pref-hint">红＝核心词 · 蓝＝限定/陷阱词 · 灰＝手册暂未收录；悬停可看对应知识点</span>
       </div>
+      <div class="pref-row">
+        <span class="pref"><b style="font-weight:600">知识点手册</b>　已复习 ${kbDoneCount()} / ${KB_POINTS.length} 张卡</span>
+        <button class="btn ghost" id="kbFromStats">打开卡片复习</button>
+        <span class="pref-hint">勾选进度记在本机，手机可左右滑动翻卡</span>
+      </div>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn" id="exportBtn">导出做题记录</button>
         <button class="btn ghost" id="openReset">二刷 / 重置 →</button>
@@ -760,6 +772,10 @@
         saveSettings();
         renderCard();
       });
+    }
+    const kbFromStats = $('kbFromStats');
+    if (kbFromStats) {
+      kbFromStats.addEventListener('click', () => { closeModal(); openKb(); });
     }
   }
 
@@ -815,6 +831,7 @@
       store.set(KEY_STORE, manual);
     }
     store.set(KEY_PROGRESS, progress);
+    if (mode === 'all') { settings.kb = {}; saveSettings(); } // 全部重置同时清空知识点卡片进度
 
     clearAutoNext();
     state.submitted = false;
@@ -833,6 +850,312 @@
     a.download = '政治刷题记录.json';
     a.click();
     URL.revokeObjectURL(a.href);
+  }
+
+  /* ---------------- 题目 → 知识点卡片 ---------------- */
+  // 这道题用到的手册知识点（去重、按编号）
+  function kbUsedIn(q) {
+    const entry = KW[q.id];
+    if (!entry) return [];
+    const seen = new Set();
+    const out = [];
+    const take = (it) => {
+      if (!it || !it.k || seen.has(it.k) || !KB_BY_K.has(it.k)) return;
+      seen.add(it.k);
+      out.push(KB_BY_K.get(it.k));
+    };
+    (entry.stem || []).forEach(take);
+    Object.keys(entry.opts || {}).forEach((letter) => (entry.opts[letter] || []).forEach(take));
+    return out.sort((a, b) => (a.k < b.k ? -1 : 1));
+  }
+
+  function kpRow(q) {
+    const used = kbUsedIn(q);
+    if (!used.length) return '';
+    return `<div class="kp-row">
+      <span class="kp-head">考点卡片</span>
+      ${used.map((p) => `<button class="kp-chip" data-kp="${esc(p.k)}">${esc(p.k)} · ${esc(p.title)}<i>${esc(p.page)}</i></button>`).join('')}
+    </div>`;
+  }
+
+  /* ---------------- 知识点手册（卡片复习） ---------------- */
+  // 数据来自 data/handbook.js：手册 35 页逐页转录出的 100 个知识点、585 条彩色词句
+  const KB = (window.ZZ_KB && window.ZZ_KB.points) ? window.ZZ_KB : { chapters: [], points: [] };
+  const KB_CHAPTERS = KB.chapters || [];
+  const KB_POINTS = (KB.points || []).slice().sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
+  const KB_BY_K = new Map(KB_POINTS.map((p) => [p.k, p]));
+  const KB_CHAP_NAME = new Map(KB_CHAPTERS.map((c) => [c.id, c.name]));
+  const Q_BY_ID = new Map(DATA.questions.map((q) => [q.id, q]));
+
+  // 反查：知识点 → 挂了这条知识点的真题（复用题目里已有的关键词标注，不改题库、不改标注）
+  const KB_RELATED = new Map();
+  Object.keys(KW).forEach((id) => {
+    const entry = KW[id];
+    if (!entry) return;
+    const seen = new Set();
+    const take = (it) => {
+      if (!it || !it.k || seen.has(it.k) || !KB_BY_K.has(it.k)) return;
+      seen.add(it.k);
+      if (!KB_RELATED.has(it.k)) KB_RELATED.set(it.k, new Set());
+      KB_RELATED.get(it.k).add(id);
+    };
+    (entry.stem || []).forEach(take);
+    Object.keys(entry.opts || {}).forEach((letter) => (entry.opts[letter] || []).forEach(take));
+  });
+
+  function kbRelated(k) {
+    const set = KB_RELATED.get(k);
+    if (!set) return [];
+    return Array.from(set)
+      .map((id) => Q_BY_ID.get(id))
+      .filter(Boolean)
+      .sort((a, b) => (a.year - b.year) || (a.no - b.no) || (a.id < b.id ? -1 : 1));
+  }
+
+  function kbStore() {
+    if (!settings.kb || typeof settings.kb !== 'object') settings.kb = {};
+    return settings.kb;
+  }
+  function kbIsDone(k) { return !!kbStore()[k]; }
+  function kbDoneCount() { return KB_POINTS.filter((p) => kbIsDone(p.k)).length; }
+
+  const kbView = { q: '', filter: 'all', chapter: 'all', page: null, idx: 0 };
+
+  function kbList() {
+    const needle = kbView.q.trim().toLowerCase();
+    return KB_POINTS.filter((p) => {
+      if (kbView.chapter !== 'all' && p.chapter !== kbView.chapter) return false;
+      if (kbView.page && p.page !== kbView.page) return false;
+      const done = kbIsDone(p.k);
+      if (kbView.filter === 'todo' && done) return false;
+      if (kbView.filter === 'done' && !done) return false;
+      if (!needle) return true;
+      if (p.k.indexOf(needle) >= 0) return true;
+      if ((p.title || '').toLowerCase().indexOf(needle) >= 0) return true;
+      return (p.items || []).some((it) =>
+        (it.t || '').toLowerCase().indexOf(needle) >= 0 || (it.why || '').toLowerCase().indexOf(needle) >= 0);
+    });
+  }
+
+  function kbCurrent() {
+    const list = kbList();
+    if (!list.length) return null;
+    if (kbView.idx > list.length - 1) kbView.idx = list.length - 1;
+    if (kbView.idx < 0) kbView.idx = 0;
+    return list[kbView.idx];
+  }
+
+  function kbItemClass(c) {
+    return c === 'core' ? 'kb-item core' : c === 'ok' ? 'kb-item ok' : c === 'none' ? 'kb-item none' : 'kb-item limit';
+  }
+
+  function renderKb() {
+    if ($('kbOverlay').hidden) return;
+    const list = kbList();
+    const cur = kbCurrent();
+    const doneAll = kbDoneCount();
+
+    $('kbSub').textContent = '知识点 001–100 · ' + KB_POINTS.length + ' 张卡 · 已复习 '
+      + doneAll + ' / ' + KB_POINTS.length + (kbView.page ? ' · 只看 ' + kbView.page : '');
+
+    // 章节 chips
+    $('kbChapters').innerHTML = [{ id: 'all', name: '全部章节' }, ...KB_CHAPTERS].map((c) => {
+      const n = c.id === 'all' ? KB_POINTS.length : KB_POINTS.filter((p) => p.chapter === c.id).length;
+      return `<button class="chip${kbView.chapter === c.id ? ' active' : ''}" data-chapter="${esc(c.id)}">${esc(c.name)}<i>${n}</i></button>`;
+    }).join('');
+
+    // 筛选状态
+    $('kbFilter').querySelectorAll('button').forEach((b) => {
+      b.classList.toggle('active', b.dataset.filter === kbView.filter);
+    });
+
+    // 目录
+    $('kbToc').innerHTML = KB_CHAPTERS.map((c) => {
+      const pts = KB_POINTS.filter((p) => p.chapter === c.id);
+      if (!pts.length) return '';
+      return `<div class="kb-toc-group">
+        <div class="kb-toc-head">${esc(c.name)}<span>${esc(c.pages)}</span></div>
+        ${pts.map((p) => `<button class="kb-toc-item${cur && cur.k === p.k ? ' on' : ''}${kbIsDone(p.k) ? ' done' : ''}" data-k="${esc(p.k)}">
+          <span class="k">${esc(p.k)}</span><span class="t">${esc(p.title)}</span><i>${kbIsDone(p.k) ? '✓' : ''}</i></button>`).join('')}
+      </div>`;
+    }).join('');
+
+    // 卡片
+    const deck = $('kbDeck');
+    if (!cur) {
+      deck.innerHTML = '<div class="empty-state">没有符合条件的知识点，换个关键词或筛选项试试。</div>';
+      return;
+    }
+    const rel = kbRelated(cur.k);
+    const chap = KB_CHAP_NAME.get(cur.chapter) || '';
+    deck.innerHTML = `
+      <article class="kb-card" data-card="${esc(cur.k)}">
+        <div class="kb-card-top">
+          <button class="kb-k" data-jump="${esc(cur.k)}" title="在目录里定位这一条">知识点 ${esc(cur.k)}</button>
+          <button class="kb-page${kbView.page ? ' on' : ''}" data-page="${esc(cur.page)}" title="只看这一页">${esc(cur.page)}</button>
+          <span class="kb-chap">${esc(chap)}</span>
+          <label class="kb-done"><input type="checkbox" id="kbDoneCb"${kbIsDone(cur.k) ? ' checked' : ''}><span>已复习</span></label>
+        </div>
+        <h3 class="kb-title">${esc(cur.title)}</h3>
+        <ul class="kb-items">
+          ${(cur.items || []).length
+            ? cur.items.map((it) => `<li class="${kbItemClass(it.c)}"><b>${esc(it.t)}</b>${it.why ? `<span>${esc(it.why)}</span>` : ''}</li>`).join('')
+            : '<li class="kb-item none"><b>本页为章节导览</b><span>看右侧目录继续</span></li>'}
+        </ul>
+        <div class="kb-rel">
+          <div class="kb-rel-head">关联真题${rel.length ? `<span>${rel.length} 道，点一下回到题目</span>` : '<span>题库里暂无这题的标注</span>'}</div>
+          ${rel.length ? `<div class="kb-rel-list">${rel.map((q) => `<button class="kb-q" data-q="${esc(q.id)}">${esc(q.type)} ${q.no}<i>${q.year}</i></button>`).join('')}</div>` : ''}
+        </div>
+        <div class="kb-nav">
+          <button class="btn ghost" data-nav="-1"${kbView.idx <= 0 ? ' disabled' : ''}>← 上一张</button>
+          <span class="kb-pos">${kbView.idx + 1} / ${list.length}</span>
+          <span class="kb-hint">左右滑动翻卡</span>
+          <button class="btn ghost" data-nav="1"${kbView.idx >= list.length - 1 ? ' disabled' : ''}>下一张 →</button>
+        </div>
+      </article>`;
+  }
+
+  function openKb(k) {
+    if (!KB_POINTS.length) return;
+    clearAutoNext();
+    $('kbOverlay').hidden = false;
+    document.body.classList.add('kb-open');
+    if (k && KB_BY_K.has(k)) {
+      kbView.chapter = 'all';
+      kbView.filter = 'all';
+      kbView.page = null;
+      kbView.q = '';
+      $('kbSearch').value = '';
+    }
+    const list = kbList();
+    const at = k ? list.findIndex((p) => p.k === k) : -1;
+    kbView.idx = at >= 0 ? at : 0;
+    renderKb();
+    $('kbDeck').scrollTop = 0;
+    $('kbToc').scrollTop = 0;
+  }
+
+  function closeKb() {
+    $('kbOverlay').hidden = true;
+    document.body.classList.remove('kb-open');
+  }
+
+  function kbGo(delta) {
+    const list = kbList();
+    if (!list.length) return;
+    const next = kbView.idx + delta;
+    if (next < 0 || next > list.length - 1) return;
+    kbView.idx = next;
+    renderKb();
+    $('kbDeck').scrollTop = 0;
+    const on = $('kbToc').querySelector('.kb-toc-item.on');
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+  }
+
+  function kbSelect(k) {
+    let list = kbList();
+    let at = list.findIndex((p) => p.k === k);
+    if (at < 0) {
+      kbView.chapter = 'all';
+      kbView.filter = 'all';
+      kbView.page = null;
+      kbView.q = '';
+      $('kbSearch').value = '';
+      renderKb();
+      list = kbList();
+      at = list.findIndex((p) => p.k === k);
+    }
+    if (at < 0) return;
+    kbView.idx = at;
+    renderKb();
+    $('kbDeck').scrollTop = 0;
+  }
+
+  function kbFocusToc(k) {
+    const toc = $('kbToc');
+    toc.classList.add('open');
+    const item = toc.querySelector(`[data-k="${k}"]`);
+    if (item) {
+      toc.querySelectorAll('.kb-toc-item').forEach((el) => el.classList.remove('hit'));
+      item.classList.add('hit');
+      item.scrollIntoView({ block: 'center' });
+    }
+  }
+
+  function kbOpenQuestion(id) {
+    const q = Q_BY_ID.get(id);
+    if (!q) return;
+    closeKb();
+    state.subject = q.subject;
+    state.part = q.subject === '马克思主义哲学' ? (q.part || '') : '';
+    state.type = q.type;
+    render();
+    showQuestion(q.id, true);
+  }
+
+  function bindKb() {
+    $('kbBtn').addEventListener('click', () => openKb());
+    $('kbClose').addEventListener('click', closeKb);
+    $('kbTocBtn').addEventListener('click', () => $('kbToc').classList.toggle('open'));
+
+    $('kbSearch').addEventListener('input', (e) => {
+      kbView.q = e.target.value;
+      kbView.idx = 0;
+      renderKb();
+    });
+    $('kbSearch').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); kbGo(1); }
+    });
+
+    $('kbOverlay').addEventListener('click', (e) => {
+      const t = e.target;
+      if (t.id === 'kbOverlay') { closeKb(); return; }
+      const chap = t.closest('[data-chapter]');
+      if (chap) { kbView.chapter = chap.dataset.chapter; kbView.page = null; kbView.idx = 0; renderKb(); return; }
+      const filter = t.closest('[data-filter]');
+      if (filter) { kbView.filter = filter.dataset.filter; kbView.idx = 0; renderKb(); return; }
+      const page = t.closest('[data-page]');
+      if (page) { kbView.page = kbView.page === page.dataset.page ? null : page.dataset.page; kbView.idx = 0; renderKb(); return; }
+      const toc = t.closest('[data-k]');
+      if (toc) { kbSelect(toc.dataset.k); return; }
+      const jump = t.closest('[data-jump]');
+      if (jump) { kbFocusToc(jump.dataset.jump); return; }
+      const rel = t.closest('[data-q]');
+      if (rel) { kbOpenQuestion(rel.dataset.q); return; }
+      const nav = t.closest('[data-nav]');
+      if (nav) { kbGo(Number(nav.dataset.nav)); }
+    });
+
+    $('kbOverlay').addEventListener('change', (e) => {
+      if (e.target.id !== 'kbDoneCb') return;
+      const cur = kbCurrent();
+      if (!cur) return;
+      if (e.target.checked) kbStore()[cur.k] = Date.now();
+      else delete kbStore()[cur.k];
+      saveSettings();
+      renderKb();
+    });
+
+    // 手机左右滑动翻卡
+    const deck = $('kbDeck');
+    let sx = 0; let sy = 0; let swipe = false;
+    deck.addEventListener('touchstart', (e) => {
+      const t0 = e.touches[0];
+      sx = t0.clientX; sy = t0.clientY; swipe = false;
+    }, { passive: true });
+    deck.addEventListener('touchmove', (e) => {
+      const t0 = e.touches[0];
+      const dx = t0.clientX - sx;
+      const dy = t0.clientY - sy;
+      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) swipe = true;
+    }, { passive: true });
+    deck.addEventListener('touchend', (e) => {
+      if (!swipe) return;
+      const t0 = e.changedTouches[0];
+      const dx = t0.clientX - sx;
+      if (Math.abs(dx) < 46) return;
+      kbGo(dx < 0 ? 1 : -1);
+    });
   }
 
   /* ---------------- 事件绑定 ---------------- */
@@ -880,10 +1203,19 @@
 
     document.addEventListener('keydown', (e) => {
       const tag = (e.target.tagName || '').toLowerCase();
+      if (!$('kbOverlay').hidden) {
+        if (e.key === 'Escape') { closeKb(); return; }
+        if (tag === 'input' || tag === 'textarea') return;
+        if (e.key === 'ArrowLeft') { e.preventDefault(); kbGo(-1); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); kbGo(1); return; }
+        if (e.key === '/') { e.preventDefault(); $('kbSearch').focus(); return; }
+        return;
+      }
       if (tag === 'input' || tag === 'textarea') return;
       if (!$('modal').hidden) { if (e.key === 'Escape') closeModal(); return; }
 
       if (e.key === '/') { e.preventDefault(); $('noInput').focus(); return; }
+      if (e.key.toLowerCase() === 'k') { e.preventDefault(); openKb(); return; }
       if (e.key === 'ArrowLeft') { e.preventDefault(); goRelative(-1); return; }
       if (e.key === 'ArrowRight') { e.preventDefault(); goRelative(1); return; }
       if (e.key.toLowerCase() === 'r') { $('randomBtn').click(); return; }
@@ -911,6 +1243,7 @@
   /* ---------------- 启动 ---------------- */
   function init() {
     bindGlobal();
+    bindKb();
 
     // 支持分享/书签直链：index.html?id=学科/部分/题型/题号&reveal=1
     let deep = null;
