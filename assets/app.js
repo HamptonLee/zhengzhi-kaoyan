@@ -19,6 +19,16 @@
   const KEY_STORE = 'zz.manual.v1';
   const KEY_PROGRESS = 'zz.progress.v1';
   const KEY_SETTINGS = 'zz.settings.v1';
+  const AUTO_NEXT_MS = 900; // 答对后停留多久再翻页，留出看「✅ 答对了」的时间
+
+  // 答对自动翻页的定时器：翻题、切范围、开弹层时都要取消，避免跳两题
+  let autoNextTimer = null;
+  function clearAutoNext() {
+    if (autoNextTimer) {
+      clearTimeout(autoNextTimer);
+      autoNextTimer = null;
+    }
+  }
 
   const store = {
     get(key, fallback) {
@@ -74,7 +84,8 @@
     picked: [],
     revealed: false,
     submitted: false,
-    quiz: settings.quiz !== undefined ? settings.quiz !== false : hasAnswers
+    quiz: settings.quiz !== undefined ? settings.quiz !== false : hasAnswers,
+    autoNext: settings.autoNext !== false // 答对自动下一题，默认开
   };
 
   if (state.subject !== '马克思主义哲学') state.part = '';
@@ -213,6 +224,7 @@
   function showQuestion(id, doScroll) {
     const q = findById(id);
     if (!q) return;
+    clearAutoNext();
     state.id = id;
     state.picked = [];
     state.revealed = false;
@@ -225,7 +237,8 @@
 
   function saveSettings() {
     store.set(KEY_SETTINGS, {
-      subject: state.subject, part: state.part, type: state.type, quiz: state.quiz, id: state.id
+      subject: state.subject, part: state.part, type: state.type, quiz: state.quiz, id: state.id,
+      autoNext: state.autoNext
     });
   }
 
@@ -286,7 +299,7 @@
       const mine = (p.picked || []).slice().sort().join('');
       verdict = p.correct
         ? `<div class="verdict ok">✅ 答对了<span>答案 ${esc(q.answer)}</span></div>`
-        : `<div class="verdict bad">❌ 答错了<span>你选 ${esc(mine || '—')} ｜ 正确答案 ${esc(q.answer)}</span></div>`;
+        : `<div class="verdict bad">❌ 答错了<span>你选 ${esc(mine || '—')} ｜ 正确答案 ${esc(q.answer)} ｜ 解析见下方</span></div>`;
     }
 
     let actions = '';
@@ -301,9 +314,16 @@
           <button class="btn ghost" id="revealBtn">收起答案</button>
           <span class="hint">已看答案，本题不计入正确率</span>`;
       } else {
-        actions = `<button class="btn primary" id="nextBtn">下一题 →</button>
+        // 自测已提交：答对→自动进下一题；答错→留在本题看解析
+        const canAdvance = idx >= 0 && idx < list.length - 1;
+        const hint = p && p.correct
+          ? (!canAdvance
+              ? '答对了 · 已经是本题区最后一题'
+              : state.autoNext ? '答对了，自动进入下一题…' : '答对了 · 点「下一题」继续')
+          : '答错了 · 已留在本题，解析见下方';
+        actions = `<button class="btn primary" id="nextBtn" ${canAdvance ? '' : 'disabled'}>下一题 →</button>
           <button class="btn ghost" id="prevBtn" ${idx <= 0 ? 'disabled' : ''}>← 上一题</button>
-          <span class="hint">${p && p.correct ? '答对了' : '已记入错题本'}</span>`;
+          <span class="hint">${hint}</span>`;
       }
     } else {
       actions = `<button class="btn primary" id="revealBtn">${revealed ? '收起答案' : '看答案'}</button>
@@ -325,6 +345,7 @@
             <span class="src">${srcLabel}</span>
           </div>
           ${aiNote}
+          <div class="explain-head">解析</div>
           <p class="explain ${q.explain ? '' : 'empty'}">${q.explain ? esc(q.explain) : '这道题暂时只有答案，还没有讲解。'}</p>
         </div>`;
       } else {
@@ -376,12 +397,13 @@
     const revealBtn = $('revealBtn');
     if (revealBtn) {
       revealBtn.addEventListener('click', () => {
+        clearAutoNext();
         state.revealed = !state.revealed;
         if (state.revealed) markSeen(q);
         renderCard();
         renderGrid();
         renderFilters();
-        if (state.revealed) scrollToVerdict();
+        if (state.revealed) scrollToResult(false);
       });
     }
 
@@ -443,16 +465,33 @@
     renderCard();
     renderGrid();
     renderFilters();
-    scrollToVerdict();
+    scrollToResult(correct);
+    scheduleAutoNext(q, correct);
   }
 
-  // 手机上提交后自动把判分横幅滚到视野中间，否则答案在屏幕外
-  function scrollToVerdict() {
+  // 手机上提交后把结果滚进视野：答对看判分横幅，答错直接看解析
+  function scrollToResult(correct) {
     if (!window.matchMedia('(max-width: 900px)').matches) return;
     setTimeout(() => {
-      const v = cardEl.querySelector('.verdict') || cardEl.querySelector('.answer-box');
+      const v = cardEl.querySelector(correct ? '.verdict' : '.answer-box') ||
+        cardEl.querySelector('.verdict');
       if (v) v.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 80);
+  }
+
+  // 答对自动翻到下一题；答错停在本题，解析已经展开
+  function scheduleAutoNext(q, correct) {
+    clearAutoNext();
+    if (!correct || !state.autoNext || !state.quiz) return;
+    const list = currentList();
+    const idx = list.findIndex((x) => x.id === q.id);
+    if (idx < 0 || idx >= list.length - 1) return; // 本题区最后一题不翻
+    autoNextTimer = setTimeout(() => {
+      autoNextTimer = null;
+      // 这段时间里用户可能自己翻了页、切了范围或打开弹层，确认还停在原题再翻
+      if (state.id !== q.id || !state.submitted) return;
+      goRelative(1);
+    }, AUTO_NEXT_MS);
   }
 
   function goRelative(delta) {
@@ -530,6 +569,7 @@
 
   /* ---------------- 弹层 ---------------- */
   function openModal(title, html) {
+    clearAutoNext();
     $('modalTitle').textContent = title;
     $('modalContent').innerHTML = html;
     $('modal').hidden = false;
@@ -603,6 +643,13 @@
             <td class="num">${s.done ? Math.round((s.ok / s.done) * 100) + '%' : '—'}</td></tr>`).join('')}
         </tbody>
       </table>
+      <div class="pref-row">
+        <label class="pref">
+          <input type="checkbox" id="autoNextCb" ${state.autoNext ? 'checked' : ''}>
+          <span>答对后自动进入下一题</span>
+        </label>
+        <span class="pref-hint">答错则停留在本题，自动展开解析</span>
+      </div>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn" id="exportBtn">导出做题记录</button>
         <button class="btn ghost" id="openReset">二刷 / 重置 →</button>
@@ -610,6 +657,14 @@
 
     $('exportBtn').addEventListener('click', exportProgress);
     $('openReset').addEventListener('click', showResetModal);
+    const autoNextCb = $('autoNextCb');
+    if (autoNextCb) {
+      autoNextCb.addEventListener('change', (e) => {
+        state.autoNext = e.target.checked;
+        saveSettings();
+        renderCard();
+      });
+    }
   }
 
   function showResetModal() {
@@ -665,6 +720,7 @@
     }
     store.set(KEY_PROGRESS, progress);
 
+    clearAutoNext();
     state.submitted = false;
     state.revealed = false;
     state.picked = [];
@@ -716,6 +772,7 @@
     $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
 
     $('modeBtn').addEventListener('click', () => {
+      clearAutoNext();
       state.quiz = !state.quiz;
       state.submitted = false;
       state.revealed = false;
