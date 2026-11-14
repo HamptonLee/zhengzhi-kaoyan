@@ -272,6 +272,52 @@ button, input { font: inherit; color: inherit; }
 
 .options { display: flex; flex-direction: column; gap: 8px; }
 
+/* 关键词标记（来自《一页纸》知识点手册的核心词，可在统计里开关） */
+.kw {
+  position: relative;
+  padding: 0 2px;
+  border-radius: 3px;
+  cursor: help;
+  color: inherit;
+}
+.kw-core { color: var(--accent); background: #fbeee9; border-bottom: 1px solid rgba(168, 50, 44, .45); }
+.kw-limit { color: #2f5d8a; background: #eaf1f8; border-bottom: 1px solid rgba(47, 93, 138, .38); }
+.kw-none { color: var(--ink-3); background: #f2eee5; border-bottom: 1px dashed rgba(138, 131, 119, .55); }
+.kw-ok { color: var(--ok); background: var(--ok-soft); border-bottom: 1px solid rgba(47, 107, 70, .4); }
+.kw[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: 290px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #221f1b;
+  color: #fdfaf4;
+  font-family: system-ui, -apple-system, "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  letter-spacing: 0;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  z-index: 60;
+}
+.kw[data-tip]:hover::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  bottom: calc(100% + 3px);
+  border: 5px solid transparent;
+  border-top-color: #221f1b;
+  z-index: 61;
+}
+@media (max-width: 700px) {
+  .kw[data-tip]:hover::after { max-width: 210px; }
+}
+
 .option {
   display: flex;
   gap: 12px;

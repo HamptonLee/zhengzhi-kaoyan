@@ -3,6 +3,7 @@
   'use strict';
 
   const DATA = window.ZZ_DATA;
+  const KW = window.ZZ_KW || {}; // 关键词标注（data/keywords.js），没标注的题不受影响
   const $ = (id) => document.getElementById(id);
   const cardEl = $('card');
   const gridEl = $('numGrid');
@@ -100,7 +101,8 @@
     submitted: false,
     quiz: settings.quiz !== undefined ? settings.quiz !== false : hasAnswers,
     autoNext: settings.autoNext !== false, // 答对自动下一题，默认开
-    autoNextMs: clampAutoNextMs(settings.autoNextMs) // 停留时长，默认 900ms
+    autoNextMs: clampAutoNextMs(settings.autoNextMs), // 停留时长，默认 900ms
+    showKw: settings.showKw !== false // 题干/选项里标手册关键词，默认开
   };
 
   if (state.subject !== '马克思主义哲学') state.part = '';
@@ -253,8 +255,31 @@
   function saveSettings() {
     store.set(KEY_SETTINGS, {
       subject: state.subject, part: state.part, type: state.type, quiz: state.quiz, id: state.id,
-      autoNext: state.autoNext, autoNextMs: state.autoNextMs
+      autoNext: state.autoNext, autoNextMs: state.autoNextMs, showKw: state.showKw
     });
+  }
+
+  /* ---------------- 关键词标记 ---------------- */
+  // 一条标记的提示文案：写了 note 用 note，否则用“知识点 xxx · Pxx”
+  function kwTip(item) {
+    if (item.note) return item.note;
+    if (item.k) return '知识点 ' + item.k + (item.page ? ' · ' + item.page : '');
+    return '';
+  }
+
+  // 在已转义的文本上包 <span class="kw kw-xxx" data-tip>；只替换首次出现
+  function markKw(escapedText, items) {
+    if (!state.showKw || !items || !items.length) return escapedText;
+    let out = escapedText;
+    const clsOf = { core: 'kw kw-core', limit: 'kw kw-limit', none: 'kw kw-none', ok: 'kw kw-ok' };
+    items.forEach((item) => {
+      const needle = esc(item.t);
+      if (!needle || out.indexOf(needle) < 0) return;
+      const cls = clsOf[item.c] || clsOf.core;
+      out = out.replace(needle,
+        '<span class="' + cls + '" data-tip="' + esc(kwTip(item)) + '">' + needle + '</span>');
+    });
+    return out;
   }
 
   function renderCard() {
@@ -271,6 +296,7 @@
     const revealed = state.revealed;
     const showAnswer = revealed;
     const answerLetters = (q.answer || '').split('');
+    const kwStem = (KW[q.id] && KW[q.id].stem) || null;
 
     const head = `
       <div class="card-head">
@@ -291,6 +317,7 @@
       : '';
 
     const options = q.options.map((o) => {
+      const kwOpts = (KW[q.id] && KW[q.id].opts) || {};
       let cls = 'option';
       const picked = state.picked.includes(o.key);
       if (picked && !state.submitted && !revealed) cls += ' picked';
@@ -302,7 +329,7 @@
         if (picked && !(q.answer || '').includes(o.key)) cls += ' wrong';
       }
       return `<button class="${cls}" data-opt="${o.key}" ${showAnswer ? 'disabled' : ''}>
-        <span class="letter">${o.key}</span><span class="opt-text">${esc(o.text)}</span>
+        <span class="letter">${o.key}</span><span class="opt-text">${markKw(esc(o.text), kwOpts[o.key])}</span>
         ${showAnswer && answerLetters.includes(o.key) ? '<span class="opt-mark ok">✓ 正确</span>' : ''}
         ${showAnswer && picked && !answerLetters.includes(o.key) ? '<span class="opt-mark bad">✗ 你选的</span>' : ''}
       </button>`;
@@ -372,7 +399,7 @@
     }
 
     cardEl.innerHTML = `${head}${dupeRow}
-      <p class="stem">${esc(q.stem)}</p>
+      <p class="stem">${markKw(esc(q.stem), kwStem)}</p>
       <div class="options">${options}</div>
       ${verdict}
       <div class="card-actions">${actions}</div>
@@ -675,6 +702,13 @@
         </label>
         <span class="pref-hint">答错则停留在本题，自动展开解析</span>
       </div>
+      <div class="pref-row">
+        <label class="pref">
+          <input type="checkbox" id="kwCb" ${state.showKw ? 'checked' : ''}>
+          <span>在题目里标出关键词</span>
+        </label>
+        <span class="pref-hint">红＝核心词 · 蓝＝限定/陷阱词 · 灰＝手册暂未收录；悬停可看对应知识点</span>
+      </div>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn" id="exportBtn">导出做题记录</button>
         <button class="btn ghost" id="openReset">二刷 / 重置 →</button>
@@ -694,6 +728,14 @@
     if (autoNextMsSel) {
       autoNextMsSel.addEventListener('change', (e) => {
         state.autoNextMs = clampAutoNextMs(e.target.value);
+        saveSettings();
+        renderCard();
+      });
+    }
+    const kwCb = $('kwCb');
+    if (kwCb) {
+      kwCb.addEventListener('change', (e) => {
+        state.showKw = e.target.checked;
         saveSettings();
         renderCard();
       });
