@@ -1514,7 +1514,7 @@
     clearQueue();
     closeModal();
     clearAutoNext();
-    state.paper = { ids: list.map((q) => q.id), answers: {}, startedAt: Date.now() };
+    state.paper = { ids: list.map((q) => q.id), answers: {}, startedAt: Date.now(), prevQuiz: state.quiz };
     state.quiz = true; // 套卷按自测规则作答
     saveSettings();
     renderFilters();
@@ -1526,7 +1526,9 @@
   function quitPaper() {
     if (!state.paper) return;
     if (!confirm('退出套卷？本次作答不会记成绩，但已答的题仍留在做题记录里。')) return;
+    const prevQuiz = state.paper.prevQuiz;
     state.paper = null;
+    if (typeof prevQuiz === 'boolean') state.quiz = prevQuiz; // 退出后回到原来的模式
     clearAutoNext();
     renderFilters();
     renderGrid();
@@ -1581,6 +1583,7 @@
     const wrongRows = rows.filter((r) => !r.ok);
 
     state.paper = null;
+    if (typeof paper.prevQuiz === 'boolean') state.quiz = paper.prevQuiz; // 交卷后回到原来的模式
     clearAutoNext();
     renderFilters();
     renderGrid();
