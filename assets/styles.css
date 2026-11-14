@@ -282,7 +282,7 @@ button, input { font: inherit; color: inherit; }
 }
 .kw-core { color: var(--accent); background: #fbeee9; border-bottom: 1px solid rgba(168, 50, 44, .45); }
 .kw-limit { color: #2f5d8a; background: #eaf1f8; border-bottom: 1px solid rgba(47, 93, 138, .38); }
-.kw-none { color: var(--ink-3); background: #f2eee5; border-bottom: 1px dashed rgba(138, 131, 119, .55); }
+.kw-none { color: #6f685c; background: #f4f0e7; border-bottom: 1px dashed rgba(111, 104, 92, .6); }
 .kw-ok { color: var(--ok); background: var(--ok-soft); border-bottom: 1px solid rgba(47, 107, 70, .4); }
 .kw[data-tip]:hover::after {
   content: attr(data-tip);
