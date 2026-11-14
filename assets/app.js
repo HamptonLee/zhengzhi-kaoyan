@@ -102,7 +102,8 @@
     quiz: settings.quiz !== undefined ? settings.quiz !== false : hasAnswers,
     autoNext: settings.autoNext !== false, // 答对自动下一题，默认开
     autoNextMs: clampAutoNextMs(settings.autoNextMs), // 停留时长，默认 900ms
-    showKw: settings.showKw !== false // 题干/选项里标手册关键词，默认开
+    showKw: settings.showKw !== false, // 题干/选项里标手册关键词，默认开
+    paper: null // 正在做的套卷：{ids, answers, startedAt}
   };
 
   if (state.subject !== '马克思主义哲学') state.part = '';
@@ -116,8 +117,27 @@
     return state.subject + '|' + (state.subject === '马克思主义哲学' ? state.part : '') + '|' + state.type;
   }
 
+  // 复习清单 / 套卷用同一条「当前列表」通道：有清单就用清单，有套卷就用套卷，否则按题区
+  let reviewQueue = [];
+  let queuePos = 0;
+
+  function paperQuestions() {
+    if (!state.paper || !state.paper.ids) return null;
+    return state.paper.ids.map((id) => findById(id)).filter(Boolean);
+  }
+
   function currentList() {
+    const paper = paperQuestions();
+    if (paper && paper.length) return paper;
+    if (reviewQueue.length) {
+      const qs = reviewQueue.map((id) => findById(id)).filter(Boolean);
+      if (qs.length) return qs;
+    }
     return byScope.get(currentScope()) || [];
+  }
+
+  function inPaper() {
+    return !!(state.paper && state.paper.ids && state.paper.ids.length);
   }
 
   function findById(id) {
@@ -159,6 +179,12 @@
 
   /* ---------------- 过滤区 ---------------- */
   function renderFilters() {
+    // 套卷进行中：隐藏题区筛选，换成套卷信息条
+    const paperOn = inPaper();
+    $('filters').hidden = paperOn;
+    $('paperBar').hidden = !paperOn;
+    if (paperOn) renderPaperBar();
+
     const sRow = $('subjectRow');
     sRow.innerHTML = SUBJECTS.map((s) =>
       `<button class="chip${s === state.subject ? ' active' : ''}" data-subject="${esc(s)}">${esc(s)}</button>`
@@ -242,7 +268,10 @@
     const q = findById(id);
     if (!q) return;
     clearAutoNext();
+    // 用户自己跳走了（点题号、搜题、随机），复习清单就自动收起来
+    if (reviewQueue.length && reviewQueue[queuePos] !== id) clearQueue();
     state.id = id;
+    state.type = q.type; // 套卷 / 复习清单会跨题型跳转，题型必须跟着题走
     state.picked = [];
     state.revealed = false;
     state.submitted = false;
@@ -256,8 +285,30 @@
     store.set(KEY_SETTINGS, {
       subject: state.subject, part: state.part, type: state.type, quiz: state.quiz, id: state.id,
       autoNext: state.autoNext, autoNextMs: state.autoNextMs, showKw: state.showKw,
-      kb: settings.kb || {} // 知识点卡片的复习进度（k → 勾选时间戳）
+      kb: settings.kb || {}, // 知识点卡片的复习进度（k → 勾选时间戳）
+      mem: settings.mem || {} // 背题模式的记忆程度（题目 id → {level, ts}）
     });
+  }
+
+  /* ---------------- 记忆程度（熟记 / 模糊 / 未掌握） ---------------- */
+  const MEM_LABEL = { known: '熟记', fuzzy: '模糊', unknown: '未掌握' };
+
+  function memStore() {
+    if (!settings.mem || typeof settings.mem !== 'object') settings.mem = {};
+    return settings.mem;
+  }
+  function memLevel(id) {
+    const m = memStore()[id];
+    return m && MEM_LABEL[m.level] ? m.level : '';
+  }
+  function setMem(id, level) {
+    const m = memStore();
+    if (m[id] && m[id].level === level) delete m[id]; // 再点一次取消
+    else m[id] = { level, ts: Date.now() };
+    saveSettings();
+  }
+  function memCount(level) {
+    return Object.keys(memStore()).filter((id) => memStore()[id].level === level).length;
   }
 
   /* ---------------- 关键词标记 ---------------- */
@@ -271,11 +322,17 @@
     return '限定 / 陷阱词：注意前提、主体与范围';
   }
 
+  // 关键词只在「背题模式 + 已点显示答案」之后出现：
+  // 自测模式、卡片复习、背题未看答案时都只显示纯题目文本。
+  function kwVisible() {
+    return !!state.showKw && !state.quiz && state.revealed;
+  }
+
   // 在已转义的文本上包 <span class="kw kw-xxx" data-tip>；
   // 一遍扫描：每次只从「还没包过的纯文本」里找最靠前（同位置取最长）的标记，
   // 插进去的 span 不参与后续查找，避免标记串到别的提示文字里把 HTML 弄坏。
   function markKw(escapedText, items) {
-    if (!state.showKw || !items || !items.length) return escapedText;
+    if (!kwVisible() || !items || !items.length) return escapedText;
     const clsOf = { core: 'kw kw-core', limit: 'kw kw-limit', none: 'kw kw-none', ok: 'kw kw-ok' };
     const pend = items
       .map((item) => ({ item, needle: esc(item.t) }))
@@ -390,10 +447,31 @@
           <span class="hint">${hint}</span>`;
       }
     } else {
-      actions = `<button class="btn primary" id="revealBtn">${revealed ? '收起答案' : '看答案'}</button>
+      actions = `<button class="btn primary" id="revealBtn" title="显示答案后才会出现关键词标注">${revealed ? '收起答案' : '显示答案'}</button>
         <button class="btn ghost" id="prevBtn" ${idx <= 0 ? 'disabled' : ''}>← 上一题</button>
-        <button class="btn ghost" id="nextBtn" ${idx >= list.length - 1 ? 'disabled' : ''}>下一题 →</button>`;
+        <button class="btn ghost" id="nextBtn" ${idx >= list.length - 1 ? 'disabled' : ''}>下一题 →</button>
+        <span class="hint">${revealed ? '答案与关键词标注已展开' : '背题模式：先自己回忆，再点「显示答案」'}</span>`;
     }
+
+    // 背题模式才有的记忆程度标记，自测与卡片复习都不出现
+    const memRow = state.quiz ? '' : `
+      <div class="mem-row">
+        <span class="mem-label">记忆程度</span>
+        ${['known', 'fuzzy', 'unknown'].map((lv) =>
+          `<button class="mem-btn${memLevel(q.id) === lv ? ' on ' + lv : ''}" data-mem="${lv}">${MEM_LABEL[lv]}</button>`).join('')}
+        <span class="mem-hint">${memLevel(q.id)
+          ? '已记：' + MEM_LABEL[memLevel(q.id)] + ' · ' + new Date(settings.mem[q.id].ts).toLocaleDateString('zh-CN')
+          : '标记后进复习中心，按记忆程度汇总'}</span>
+      </div>`;
+
+    // 复习清单的进度条（从复习中心「一键生成清单」进来时出现）
+    const qbar = reviewQueue.length ? `
+      <div class="qbar">
+        <span class="qbar-pos">复习清单 ${queuePos + 1} / ${reviewQueue.length}</span>
+        <button class="btn ghost" data-qnav="-1" ${queuePos <= 0 ? 'disabled' : ''}>← 上一题</button>
+        <button class="btn ghost" data-qnav="1" ${queuePos >= reviewQueue.length - 1 ? 'disabled' : ''}>下一题 →</button>
+        <button class="btn ghost" data-qexit>退出清单</button>
+      </div>` : '';
 
     let answerBox = '';
     if (revealed) {
@@ -419,13 +497,21 @@
           <div id="manualSlot"></div>
         </div>`;
       }
+    } else if (!state.quiz) {
+      // 背题模式：答题区域就是一个「点击出答案」的按钮
+      answerBox = `<button class="answer-veil" id="veilBtn">
+        <b>点击显示答案</b>
+        <span>答案、解析，以及手册里对应的关键词标注</span>
+      </button>`;
     }
 
     cardEl.innerHTML = `${head}${dupeRow}
       <p class="stem">${markKw(esc(q.stem), kwStem)}</p>
       <div class="options">${options}</div>
       ${verdict}
+      ${qbar}
       <div class="card-actions">${actions}</div>
+      ${memRow}
       ${answerBox}`;
 
     bindCardEvents(q, list, idx, revealed);
@@ -480,6 +566,41 @@
     const submitBtn = $('submitBtn');
     if (submitBtn) submitBtn.addEventListener('click', () => submitAnswer());
 
+    // 背题模式的「点击显示答案」占位块
+    const veilBtn = $('veilBtn');
+    if (veilBtn) {
+      veilBtn.addEventListener('click', () => {
+        clearAutoNext();
+        state.revealed = true;
+        markSeen(q);
+        renderCard();
+        renderGrid();
+        renderFilters();
+      });
+    }
+
+    // 记忆程度：点了就记，再点同一个取消
+    cardEl.querySelectorAll('[data-mem]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setMem(q.id, btn.dataset.mem);
+        renderCard();
+      });
+    });
+
+    // 复习清单内翻题
+    cardEl.querySelectorAll('[data-qnav]').forEach((btn) => {
+      btn.addEventListener('click', () => queueStep(Number(btn.dataset.qnav)));
+    });
+    const qexit = cardEl.querySelector('[data-qexit]');
+    if (qexit) {
+      qexit.addEventListener('click', () => {
+        clearQueue();
+        renderCard();
+        renderGrid();
+        renderFilters();
+      });
+    }
+
     const nextBtn = $('nextBtn');
     if (nextBtn) nextBtn.addEventListener('click', () => goRelative(1));
 
@@ -530,6 +651,10 @@
     const picked = state.picked.slice().sort().join('');
     const correct = picked === q.answer.split('').sort().join('');
     recordAttempt(q, state.picked, correct);
+    // 套卷另行记账：交卷按这份 answers 算分，不受以前做过的影响
+    if (state.paper) {
+      state.paper.answers[q.id] = { picked: state.picked.slice(), correct, ts: Date.now() };
+    }
     state.submitted = true;
     state.revealed = true;
     renderCard();
@@ -735,7 +860,13 @@
           <input type="checkbox" id="kwCb" ${state.showKw ? 'checked' : ''}>
           <span>在题目里标出关键词</span>
         </label>
-        <span class="pref-hint">红＝核心词 · 蓝＝限定/陷阱词 · 灰＝手册暂未收录；悬停可看对应知识点</span>
+        <span class="pref-hint">只在背题模式点「显示答案」后出现；自测与卡片复习只显示纯题目</span>
+      </div>
+      <div class="pref-row">
+        <span class="pref"><b style="font-weight:600">记忆程度</b>　熟记 ${memCount('known')} · 模糊 ${memCount('fuzzy')} · 未掌握 ${memCount('unknown')}</span>
+        <button class="btn ghost" id="rvFromStats">打开复习中心</button>
+        <button class="btn ghost" id="paperFromStats">组一套卷</button>
+        <span class="pref-hint">背题模式里标记，复习中心按日期和学科汇总</span>
       </div>
       <div class="pref-row">
         <span class="pref"><b style="font-weight:600">知识点手册</b>　已复习 ${kbDoneCount()} / ${KB_POINTS.length} 张卡</span>
@@ -776,6 +907,14 @@
     const kbFromStats = $('kbFromStats');
     if (kbFromStats) {
       kbFromStats.addEventListener('click', () => { closeModal(); openKb(); });
+    }
+    const rvFromStats = $('rvFromStats');
+    if (rvFromStats) {
+      rvFromStats.addEventListener('click', () => { closeModal(); openReview(); });
+    }
+    const paperFromStats = $('paperFromStats');
+    if (paperFromStats) {
+      paperFromStats.addEventListener('click', paperIntro);
     }
   }
 
@@ -831,8 +970,12 @@
       store.set(KEY_STORE, manual);
     }
     store.set(KEY_PROGRESS, progress);
-    if (mode === 'all') { settings.kb = {}; saveSettings(); } // 全部重置同时清空知识点卡片进度
-
+    if (mode === 'all') {
+      settings.kb = {}; // 全部重置同时清空知识点卡片进度
+      settings.mem = {}; // 以及记忆程度标记
+      saveSettings();
+    }
+    clearQueue();
     clearAutoNext();
     state.submitted = false;
     state.revealed = false;
@@ -1158,6 +1301,324 @@
     });
   }
 
+  /* ---------------- 复习清单队列 ---------------- */
+  function clearQueue() {
+    reviewQueue = [];
+    queuePos = 0;
+  }
+
+  function jumpToQuestion(id) {
+    const q = findById(id);
+    if (!q) return;
+    state.subject = q.subject;
+    state.part = q.subject === '马克思主义哲学' ? (q.part || '') : '';
+    state.type = q.type;
+    showQuestion(q.id, true);
+    renderFilters();
+  }
+
+  function startQueue(ids) {
+    const uniq = [...new Set(ids)].map((id) => findById(id)).filter(Boolean);
+    if (!uniq.length) return;
+    reviewQueue = uniq.map((q) => q.id);
+    queuePos = 0;
+    closeReview();
+    jumpToQuestion(reviewQueue[0]);
+  }
+
+  function queueStep(delta) {
+    const next = queuePos + delta;
+    if (next < 0 || next >= reviewQueue.length) return;
+    queuePos = next;
+    jumpToQuestion(reviewQueue[queuePos]);
+  }
+
+  /* ---------------- 复习中心（错题 + 记忆程度） ---------------- */
+  const rvView = { range: 'today', date: '', subject: 'all' };
+  let rvGenerated = [];
+
+  function dayStart(ts) {
+    const d = new Date(ts);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  function rvWindow() {
+    if (rvView.date) {
+      const t = new Date(rvView.date + 'T00:00:00').getTime();
+      if (isFinite(t)) return [t, t + 86400000];
+    }
+    const today = dayStart(Date.now());
+    if (rvView.range === 'today') return [today, Infinity];
+    if (rvView.range === '7') return [today - 6 * 86400000, Infinity];
+    if (rvView.range === '30') return [today - 29 * 86400000, Infinity];
+    return [0, Infinity];
+  }
+
+  function rvInRange(ts) {
+    const w = rvWindow();
+    return typeof ts === 'number' && ts >= w[0] && ts < w[1];
+  }
+
+  function rvBuckets() {
+    const out = { wrong: [], unknown: [], fuzzy: [], known: [] };
+    DATA.questions.forEach((q) => {
+      if (rvView.subject !== 'all' && q.subject !== rvView.subject) return;
+      const p = progress[q.id];
+      if (p && p.correct === false && rvInRange(p.ts || 0)) out.wrong.push(q);
+      const m = memStore()[q.id];
+      if (m && rvInRange(m.ts || 0)) {
+        if (m.level === 'known') out.known.push(q);
+        else if (m.level === 'fuzzy') out.fuzzy.push(q);
+        else if (m.level === 'unknown') out.unknown.push(q);
+      }
+    });
+    return out;
+  }
+
+  function rvItem(q, tag) {
+    const name = q.subject === '马克思主义哲学' ? (q.part || q.subject) : q.subject;
+    return `<button class="rv-item" data-q="${esc(q.id)}">
+      <span class="rv-no">${q.no}</span>
+      <span class="rv-txt"><b>${esc(name)} · ${esc(q.type)}</b>${esc(q.stem.slice(0, 34))}${q.stem.length > 34 ? '…' : ''}</span>
+      <span class="rv-tag">${esc(tag)}</span>
+      <i>${q.year}</i>
+    </button>`;
+  }
+
+  function rvSection(title, list, tag, emptyText) {
+    return `<section class="rv-sec">
+      <div class="rv-sec-head">${esc(title)}<span>${list.length} 道</span></div>
+      ${list.length ? `<div class="rv-sec-list">${list.map((q) => rvItem(q, tag)).join('')}</div>`
+        : `<div class="rv-empty">${esc(emptyText)}</div>`}
+    </section>`;
+  }
+
+  function renderReview() {
+    if ($('rvOverlay').hidden) return;
+    const b = rvBuckets();
+    const total = b.wrong.length + b.unknown.length + b.fuzzy.length + b.known.length;
+    const label = rvView.date ? rvView.date
+      : rvView.range === 'today' ? '今天'
+        : rvView.range === '7' ? '近 7 天' : rvView.range === '30' ? '近 30 天' : '全部日期';
+    $('rvSub').textContent = `${label} · ${rvView.subject === 'all' ? '全部学科' : rvView.subject} · 共 ${total} 条记录`;
+
+    $('rvRange').querySelectorAll('button').forEach((btn) => {
+      btn.classList.toggle('active', !rvView.date && btn.dataset.range === rvView.range);
+    });
+    $('rvDate').value = rvView.date;
+
+    $('rvSubjects').innerHTML = ['all', ...SUBJECTS].map((s) =>
+      `<button class="chip${rvView.subject === s ? ' active' : ''}" data-rvsubject="${esc(s)}">${esc(s === 'all' ? '全部学科' : s)}</button>`
+    ).join('');
+
+    $('rvGrid').innerHTML = `
+      <div class="rv-card wrong"><b>错题</b><i>${b.wrong.length}</i><span>做错且还没做对的题</span></div>
+      <div class="rv-card unknown"><b>未掌握</b><i>${b.unknown.length}</i><span>背题时标记为未掌握</span></div>
+      <div class="rv-card fuzzy"><b>模糊</b><i>${b.fuzzy.length}</i><span>背题时标记为模糊</span></div>
+      <div class="rv-card known"><b>熟记</b><i>${b.known.length}</i><span>背题时标记为熟记</span></div>`;
+
+    $('rvBody').innerHTML = `
+      ${rvSection('错题', b.wrong, '错', '这段时间没有错题。')}
+      ${rvSection('未掌握', b.unknown, '未掌握', '还没有未掌握的标记。')}
+      ${rvSection('模糊', b.fuzzy, '模糊', '还没有模糊的标记。')}
+      ${rvSection('熟记', b.known, '熟记', '还没有熟记的标记。')}
+      <div class="rv-gen">
+        <button class="btn primary" id="rvGen">一键生成当天复习清单</button>
+        <span class="rv-gen-hint">按「错题 → 未掌握 → 模糊」排序，熟记不重复刷</span>
+      </div>
+      <div id="rvList"></div>`;
+
+    const gen = $('rvGen');
+    gen.disabled = !(b.wrong.length || b.unknown.length || b.fuzzy.length);
+    gen.addEventListener('click', () => {
+      const ids = [...b.wrong, ...b.unknown, ...b.fuzzy].map((q) => q.id).filter((id, i, arr) => arr.indexOf(id) === i);
+      rvGenerated = ids;
+      const box = $('rvList');
+      if (!ids.length) {
+        box.innerHTML = '<div class="rv-empty">这段时间没有需要复习的题，去自测或背题记几条吧。</div>';
+        return;
+      }
+      box.innerHTML = `<div class="rv-list-wrap">
+        <div class="rv-list-head">复习清单 · ${ids.length} 题</div>
+        <ol class="rv-list">${ids.map((id) => {
+          const q = findById(id);
+          return `<li>${rvItem(q, MEM_LABEL[memLevel(id)] || (progress[id] && progress[id].correct === false ? '错题' : '复习'))}</li>`;
+        }).join('')}</ol>
+        <div class="rv-list-actions">
+          <button class="btn primary" id="rvStart">从第 1 题开始</button>
+          <span class="rv-gen-hint">进入后可用「复习清单」进度条逐题翻</span>
+        </div>
+      </div>`;
+      $('rvStart').addEventListener('click', () => startQueue(rvGenerated));
+    });
+  }
+
+  function openReview() {
+    if (!DATA.questions.length) return;
+    clearAutoNext();
+    $('rvOverlay').hidden = false;
+    document.body.classList.add('rv-open');
+    renderReview();
+    $('rvOverlay').querySelector('.rv-shell').scrollTop = 0;
+  }
+
+  function closeReview() {
+    $('rvOverlay').hidden = true;
+    document.body.classList.remove('rv-open');
+  }
+
+  function bindReview() {
+    $('reviewBtn').addEventListener('click', openReview);
+    $('rvClose').addEventListener('click', closeReview);
+    $('rvOverlay').addEventListener('click', (e) => {
+      const t = e.target;
+      if (t.id === 'rvOverlay') { closeReview(); return; }
+      const range = t.closest('[data-range]');
+      if (range) { rvView.range = range.dataset.range; rvView.date = ''; rvGenerated = []; renderReview(); return; }
+      const subj = t.closest('[data-rvsubject]');
+      if (subj) { rvView.subject = subj.dataset.rvsubject; rvGenerated = []; renderReview(); return; }
+      const jump = t.closest('[data-q]');
+      if (jump) { closeReview(); clearQueue(); jumpToQuestion(jump.dataset.q); }
+    });
+    $('rvDate').addEventListener('change', (e) => {
+      rvView.date = e.target.value || '';
+      rvGenerated = [];
+      renderReview();
+    });
+  }
+
+  /* ---------------- 一键组套卷（16 单选 + 17 多选） ---------------- */
+  const PAPER_SINGLE = 16;
+  const PAPER_MULTI = 17;
+  const PAPER_FULL = PAPER_SINGLE + PAPER_MULTI * 2; // 满分 50
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function buildPaper() {
+    const single = shuffle(DATA.questions.filter((q) => q.type === '单选' && q.answer)).slice(0, PAPER_SINGLE);
+    const multi = shuffle(DATA.questions.filter((q) => q.type === '多选' && q.answer)).slice(0, PAPER_MULTI);
+    return [...single, ...multi];
+  }
+
+  function startPaper() {
+    const list = buildPaper();
+    if (!list.length) return;
+    clearQueue();
+    closeModal();
+    clearAutoNext();
+    state.paper = { ids: list.map((q) => q.id), answers: {}, startedAt: Date.now() };
+    state.quiz = true; // 套卷按自测规则作答
+    saveSettings();
+    renderFilters();
+    renderGrid();
+    showQuestion(state.paper.ids[0], true);
+    renderFilters();
+  }
+
+  function quitPaper() {
+    if (!state.paper) return;
+    if (!confirm('退出套卷？本次作答不会记成绩，但已答的题仍留在做题记录里。')) return;
+    state.paper = null;
+    clearAutoNext();
+    renderFilters();
+    renderGrid();
+    renderCard();
+  }
+
+  function renderPaperBar() {
+    const p = state.paper;
+    if (!p) return;
+    const answered = Object.keys(p.answers).length;
+    $('paperMeta').textContent =
+      `已答 ${answered} / ${p.ids.length} · 单选 ${PAPER_SINGLE} 题 × 1 分 · 多选 ${PAPER_MULTI} 题 × 2 分 · 满分 ${PAPER_FULL}`;
+  }
+
+  function paperIntro() {
+    const s = DATA.questions.filter((q) => q.type === '单选' && q.answer).length;
+    const m = DATA.questions.filter((q) => q.type === '多选' && q.answer).length;
+    openModal('组一套真题卷', `
+      <p class="rv-gen-hint" style="margin:0 0 12px">从题库随机抽题，按真题结构组一套：</p>
+      <ul class="paper-rules">
+        <li><b>16 道单选</b>（每题 1 分）＋ <b>17 道多选</b>（每题 2 分），满分 <b>${PAPER_FULL} 分</b></li>
+        <li>抽题范围：全部 ${DATA.questions.length} 道有答案的真题（可抽单选 ${s} / 多选 ${m}）</li>
+        <li>作答即记入错题本与复习中心；交卷后出总分、逐题解析，错题自动回填</li>
+      </ul>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn primary" id="paperStart">开始作答</button>
+        <button class="btn ghost" id="paperCancel">取消</button>
+      </div>`);
+    $('paperStart').addEventListener('click', startPaper);
+    $('paperCancel').addEventListener('click', closeModal);
+  }
+
+  function finishPaper() {
+    const paper = state.paper;
+    if (!paper) return;
+    const answered = Object.keys(paper.answers).length;
+    if (answered < paper.ids.length && !confirm(`还有 ${paper.ids.length - answered} 题没答，确定交卷？`)) return;
+
+    let score = 0;
+    let sOk = 0;
+    let mOk = 0;
+    const rows = [];
+    paper.ids.forEach((id, i) => {
+      const q = findById(id);
+      if (!q) return;
+      const a = paper.answers[id];
+      const pts = q.type === '单选' ? 1 : 2;
+      const ok = !!(a && a.correct);
+      if (ok) { score += pts; if (q.type === '单选') sOk++; else mOk++; }
+      rows.push({ q, a, ok, pts, no: i + 1 });
+    });
+    const wrongRows = rows.filter((r) => !r.ok);
+
+    state.paper = null;
+    clearAutoNext();
+    renderFilters();
+    renderGrid();
+    renderCard();
+
+    openModal('套卷成绩', `
+      <div class="paper-score">
+        <div class="paper-score-main"><b>${score}</b><span>／ ${PAPER_FULL} 分</span></div>
+        <div class="paper-score-sub">
+          单选 ${sOk} / ${PAPER_SINGLE}　多选 ${mOk} / ${PAPER_MULTI}　错题 ${wrongRows.length} 道
+          <em>错题已回填到错题本与复习中心</em>
+        </div>
+      </div>
+      ${wrongRows.length ? `<div class="paper-wrong">
+        <div class="paper-wrong-head">错题解析<span>${wrongRows.length} 道</span></div>
+        ${wrongRows.map((r) => `
+          <div class="paper-qa">
+            <div class="paper-qa-head">
+              <b>第 ${r.no} 题</b>
+              <span>${r.q.year} · ${esc(r.q.part || r.q.subject)}${r.q.type} · ${r.pts} 分</span>
+              <i>${r.a ? (r.a.correct ? '' : '答错') : '未作答'}</i>
+            </div>
+            <p class="paper-qa-stem">${esc(r.q.stem)}</p>
+            <p class="paper-qa-ans">正确答案 <b>${esc(r.q.answer)}</b>${r.a ? `　你的答案 <b>${esc((r.a.picked || []).join('') || '—')}</b>` : ''}</p>
+            <p class="paper-qa-exp">${esc(r.q.explain || '这道题暂时只有答案，还没有讲解。')}</p>
+          </div>`).join('')}
+      </div>` : '<div class="rv-empty">全对，这套卷没有错题。</div>'}
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn primary" id="paperAgain">再组一套</button>
+        <button class="btn ghost" id="paperReview">去复习中心</button>
+        <button class="btn ghost" id="paperDone">收起</button>
+      </div>`);
+    $('paperAgain').addEventListener('click', paperIntro);
+    $('paperReview').addEventListener('click', () => { closeModal(); openReview(); });
+    $('paperDone').addEventListener('click', closeModal);
+  }
+
+
   /* ---------------- 事件绑定 ---------------- */
   function bindGlobal() {
     $('jumpForm').addEventListener('submit', (e) => {
@@ -1185,12 +1646,17 @@
     });
 
     $('wrongBtn').addEventListener('click', showWrongBook);
+    $('reviewBtn').addEventListener('click', openReview);
+    $('paperBtn').addEventListener('click', paperIntro);
+    $('paperSubmit').addEventListener('click', finishPaper);
+    $('paperQuit').addEventListener('click', quitPaper);
     $('statsBtn').addEventListener('click', showStats);
     $('resetBtn').addEventListener('click', showResetModal);
     $('modalClose').addEventListener('click', closeModal);
     $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
 
     $('modeBtn').addEventListener('click', () => {
+      if (inPaper()) return; // 套卷进行中不切模式
       clearAutoNext();
       state.quiz = !state.quiz;
       state.submitted = false;
@@ -1212,10 +1678,12 @@
         return;
       }
       if (tag === 'input' || tag === 'textarea') return;
+      if (!$('rvOverlay').hidden) { if (e.key === 'Escape') closeReview(); return; }
       if (!$('modal').hidden) { if (e.key === 'Escape') closeModal(); return; }
 
       if (e.key === '/') { e.preventDefault(); $('noInput').focus(); return; }
       if (e.key.toLowerCase() === 'k') { e.preventDefault(); openKb(); return; }
+      if (e.key.toLowerCase() === 'v') { e.preventDefault(); openReview(); return; }
       if (e.key === 'ArrowLeft') { e.preventDefault(); goRelative(-1); return; }
       if (e.key === 'ArrowRight') { e.preventDefault(); goRelative(1); return; }
       if (e.key.toLowerCase() === 'r') { $('randomBtn').click(); return; }
@@ -1244,6 +1712,7 @@
   function init() {
     bindGlobal();
     bindKb();
+    bindReview();
 
     // 支持分享/书签直链：index.html?id=学科/部分/题型/题号&reveal=1
     let deep = null;

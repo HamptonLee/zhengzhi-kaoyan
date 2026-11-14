@@ -20,13 +20,15 @@
       <button class="btn ghost" id="randomBtn" title="随机抽一题（R）">随机一题</button>
       <button class="btn ghost" id="wrongBtn" title="错题本">错题本 <span class="pill" id="wrongCount">0</span></button>
       <button class="btn ghost" id="kbBtn" title="知识点手册卡片（K）">知识点</button>
+      <button class="btn ghost" id="reviewBtn" title="复习中心：错题与记忆程度汇总（V）">复习</button>
+      <button class="btn ghost" id="paperBtn" title="一键组一套真题（16 单选 + 17 多选）">组套卷</button>
       <button class="btn ghost" id="statsBtn" title="统计">统计</button>
       <button class="btn ghost" id="resetBtn" title="二刷 / 重置">二刷·重置</button>
       <button class="btn" id="modeBtn" title="切换背题 / 自测（M）">自测模式</button>
     </div>
   </header>
 
-  <section class="filters">
+  <section class="filters" id="filters">
     <div class="filter-row" id="subjectRow"></div>
     <div class="filter-row" id="partRow" hidden></div>
     <div class="filter-row main-row">
@@ -42,6 +44,14 @@
       </div>
     </div>
   </section>
+
+  <div class="paper-bar" id="paperBar" hidden>
+    <div class="paper-info"><b>真题套卷</b><span id="paperMeta"></span></div>
+    <div class="paper-actions">
+      <button class="btn primary" id="paperSubmit">交卷</button>
+      <button class="btn ghost" id="paperQuit">退出套卷</button>
+    </div>
+  </div>
 
   <main class="layout">
     <section class="card" id="card" aria-live="polite"></section>
@@ -98,6 +108,30 @@
       <aside class="kb-toc" id="kbToc"></aside>
       <section class="kb-deck" id="kbDeck"></section>
     </div>
+  </div>
+</div>
+
+<div class="rv-overlay" id="rvOverlay" hidden>
+  <div class="rv-shell" role="dialog" aria-modal="true" aria-label="复习中心">
+    <header class="rv-head">
+      <div class="rv-heading">
+        <h2>复习中心</h2>
+        <p id="rvSub">加载中…</p>
+      </div>
+      <button class="btn ghost" id="rvClose">关闭</button>
+    </header>
+    <div class="rv-tools">
+      <div class="rv-seg" id="rvRange">
+        <button data-range="today" class="active">今天</button>
+        <button data-range="7">近 7 天</button>
+        <button data-range="30">近 30 天</button>
+        <button data-range="all">全部</button>
+      </div>
+      <input type="date" id="rvDate" class="rv-date" aria-label="按日期筛选">
+      <div class="rv-subjects" id="rvSubjects"></div>
+    </div>
+    <div class="rv-grid" id="rvGrid"></div>
+    <div class="rv-body" id="rvBody"></div>
   </div>
 </div>
 
