@@ -497,7 +497,7 @@
 
     // 解析下方「考点卡片」→ 打开对应知识点卡
     cardEl.querySelectorAll('[data-kp]').forEach((b) => {
-      b.addEventListener('click', () => openKb(b.dataset.kp));
+      b.addEventListener('click', () => enterCardMode(b.dataset.kp));
     });
 
     cardEl.querySelectorAll('.option').forEach((btn) => {
@@ -806,10 +806,10 @@
       </div>
       <div class="pref-row">
         <span class="pref"><b style="font-weight:600">知识点卡片</b>　熟悉 ${kbMemCount('known')} · 模糊 ${kbMemCount('fuzzy')} · 未掌握 ${kbMemCount('unknown')} · 已复习 ${kbDoneCount()} / ${MAN_CARDS.length}</span>
-        <button class="btn ghost" id="kbFromStats">打开卡片</button>
+        <button class="btn ghost" id="kbFromStats">去背卡片</button>
         <button class="btn ghost" id="rvFromStats">复习中心</button>
         <button class="btn ghost" id="paperFromStats">组一套卷</button>
-        <span class="pref-hint">三档记忆只记在卡片上，与选择题错题分开存</span>
+        <span class="pref-hint">卡片在「背题」模式里翻；三档记忆只记在卡片上，与选择题错题分开存</span>
       </div>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn" id="exportBtn">导出做题记录</button>
@@ -844,7 +844,7 @@
     }
     const kbFromStats = $('kbFromStats');
     if (kbFromStats) {
-      kbFromStats.addEventListener('click', () => { closeModal(); openKb(); });
+      kbFromStats.addEventListener('click', () => { closeModal(); enterCardMode(); });
     }
     const rvFromStats = $('rvFromStats');
     if (rvFromStats) {
@@ -1129,6 +1129,7 @@
       <button class="btn ghost" data-knav="-1" ${deck.idx <= 0 ? 'disabled' : ''}>← 上一张</button>
       <span class="kdeck-count">${MAN_CARDS.length ? deck.idx + 1 : 0} / ${MAN_CARDS.length}</span>
       <button class="btn ghost" data-knav="1" ${deck.idx >= MAN_CARDS.length - 1 ? 'disabled' : ''}>下一张 →</button>
+      <button class="btn ghost" data-toc>目录</button>
     </div>`;
   }
 
@@ -1150,53 +1151,121 @@
   }
 
   function renderDeck() {
-    if (!$('kbOverlay').hidden) {
-      $('kbDeck').innerHTML = deckHTML();
-      $('kbSub').textContent = kbSubText();
-      $('kbDeck').scrollTop = 0;
-    }
     if (MAN_CARDS.length && !state.quiz) cardEl.innerHTML = deckHTML();
+    if (tocOpen) renderToc();
   }
 
   function kbSubText() {
-    return '手册 P05–P29 · ' + MAN_CARDS.length + ' 张卡 · 已标记 ' + kbMarkedCount()
+    return MAN_CARDS.length + ' 张卡 · 已标记 ' + kbMarkedCount()
       + ' · 熟悉 ' + kbMemCount('known') + ' · 模糊 ' + kbMemCount('fuzzy') + ' · 未掌握 ' + kbMemCount('unknown');
   }
 
-  function openKb(k) {
+  /* ---------------- 背题模式的卡片目录（按章节 / 按页码） ---------------- */
+  let tocMode = 'chapter';
+  let tocOpen = false;
+
+  function tocGroups() {
+    if (tocMode === 'page') {
+      return MAN_PAGES.map((p) => {
+        const cards = (p.cols || []).flat();
+        return {
+          title: '第 ' + p.printed + ' 页' + (p.sections && p.sections.length ? ' · ' + p.sections.join(' / ') : ''),
+          meta: cards.length + ' 张',
+          cards: cards.map((c) => ({ k: c.k, title: c.title })),
+        };
+      });
+    }
+    const groups = KB_CHAPTERS.map((ch) => ({
+      title: ch.name,
+      meta: ch.kfrom + '–' + ch.kto + ' · ' + ch.pages,
+      cards: MAN_CARDS.filter((c) => c.k >= ch.kfrom && c.k <= ch.kto),
+    })).filter((g) => g.cards.length);
+    const covered = new Set(groups.flatMap((g) => g.cards.map((c) => c.k)));
+    const rest = MAN_CARDS.filter((c) => !covered.has(c.k));
+    if (rest.length) {
+      groups.push({ title: '其他', meta: rest[0].k + '–' + rest[rest.length - 1].k, cards: rest });
+    }
+    return groups;
+  }
+
+  function tocChip(c) {
+    const lv = kbMemLevel(c.k);
+    const on = CARD_BY_K.get(c.k) === deck.idx;
+    const title = (KB_BY_K.get(c.k) || {}).title || c.title || '';
+    return `<button class="ktoc-card${on ? ' on' : ''}" data-kjump="${esc(c.k)}">`
+      + `<i>${esc(c.k)}</i><span>${esc(title)}</span>`
+      + (lv ? `<em class="ktoc-dot ${lv}"></em>` : '')
+      + '</button>';
+  }
+
+  function renderToc() {
+    const panel = $('ktocPanel');
+    if (!panel) return;
+    const groups = tocGroups();
+    panel.innerHTML = `<div class="ktoc-box" role="dialog" aria-modal="true" aria-label="卡片目录">
+      <header class="ktoc-head">
+        <div class="ktoc-title"><b>卡片目录</b><p>${esc(kbSubText())}</p></div>
+        <div class="ktoc-seg">
+          <button class="${tocMode === 'chapter' ? 'active' : ''}" data-tocmode="chapter">按章节</button>
+          <button class="${tocMode === 'page' ? 'active' : ''}" data-tocmode="page">按页码</button>
+        </div>
+        <button class="btn ghost" data-tocclose>关闭</button>
+      </header>
+      <div class="ktoc-body">
+        ${groups.map((g) => `<section class="ktoc-g">
+          <h4>${esc(g.title)}<span>${esc(g.meta)}</span></h4>
+          <div class="ktoc-cards">${g.cards.map(tocChip).join('')}</div>
+        </section>`).join('')}
+      </div>
+    </div>`;
+    const cur = panel.querySelector('.ktoc-card.on');
+    if (cur) cur.scrollIntoView({ block: 'center' });
+  }
+
+  function openToc() {
+    if (state.quiz || !MAN_CARDS.length) return;
+    tocOpen = true;
+    $('ktocPanel').hidden = false;
+    document.body.classList.add('toc-open');
+    renderToc();
+  }
+
+  function closeToc() {
+    tocOpen = false;
+    $('ktocPanel').hidden = true;
+    document.body.classList.remove('toc-open');
+  }
+
+  // 从题目里的「考点卡片」或统计页进来：切到背题（卡片）并定位
+  function enterCardMode(k) {
     if (!MAN_CARDS.length) return;
     clearAutoNext();
-    $('kbOverlay').hidden = false;
-    document.body.classList.add('kb-open');
-    if (k && CARD_BY_K.has(k)) { deck.idx = CARD_BY_K.get(k); deck.shown[k] = true; }
-    renderDeck();
-  }
-
-  function closeKb() {
-    $('kbOverlay').hidden = true;
-    document.body.classList.remove('kb-open');
-  }
-
-  function kbOpenQuestion(id) {
-    const q = Q_BY_ID.get(id);
-    if (!q) return;
-    closeKb();
-    state.subject = q.subject;
-    state.part = q.subject === '马克思主义哲学' ? (q.part || '') : '';
-    state.type = q.type;
-    state.quiz = true;
+    closeToc();
+    state.quiz = false;
     state.submitted = false;
-    state.picked = [];
     state.revealed = false;
-    document.body.classList.remove('card-mode');
-    render();
-    showQuestion(q.id, true);
+    state.picked = [];
+    document.body.classList.add('card-mode');
+    if (k && CARD_BY_K.has(k)) {
+      deck.idx = CARD_BY_K.get(k);
+      deck.shown[k] = true;
+    }
+    renderFilters();
+    renderGrid();
+    renderDeck();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // 卡片交互：翻页 / 展开 / 记忆档位 / 跳真题（委托到常驻容器，页面重绘不用重绑）
+  // 卡片交互：翻页 / 展开 / 记忆档位 / 跳真题 / 目录（委托到常驻容器，页面重绘不用重绑）
   function deckClick(e) {
     const t = e.target;
     if (!t || !t.closest) return;
+    if (t.closest('[data-tocclose]')) { e.preventDefault(); closeToc(); return; }
+    const jump = t.closest('[data-kjump]');
+    if (jump) { e.preventDefault(); deckSet(jump.dataset.kjump); closeToc(); return; }
+    const seg = t.closest('[data-tocmode]');
+    if (seg) { e.preventDefault(); tocMode = seg.dataset.tocmode; renderToc(); return; }
+    if (t.closest('[data-toc]')) { e.preventDefault(); tocOpen ? closeToc() : openToc(); return; }
     const card = t.closest('.kdeck-card');
     const k = card ? card.dataset.k : '';
     const nav = t.closest('[data-knav]');
@@ -1206,17 +1275,18 @@
     const lv = t.closest('[data-kbmem]');
     if (lv && k) { e.preventDefault(); setKbMem(k, lv.dataset.kbmem); renderDeck(); return; }
     const rel = t.closest('[data-q]');
-    if (rel) { e.preventDefault(); kbOpenQuestion(rel.dataset.q); }
+    if (rel) { e.preventDefault(); jumpToQuestion(rel.dataset.q); }
   }
 
-  function bindKb() {
-    $('kbBtn').addEventListener('click', () => openKb());
-    $('kbClose').addEventListener('click', closeKb);
-    $('kbOverlay').addEventListener('click', (e) => {
-      if (e.target && e.target.id === 'kbOverlay') { closeKb(); return; }
-      deckClick(e);
-    });
+  function bindDeck() {
     cardEl.addEventListener('click', deckClick);
+    const panel = $('ktocPanel');
+    if (panel) {
+      panel.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'ktocPanel') { closeToc(); return; }
+        deckClick(e);
+      });
+    }
 
     let sx = 0;
     let sy = 0;
@@ -1227,9 +1297,6 @@
       const dy = p.clientY - sy;
       if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy) * 1.6) deckGo(dx < 0 ? 1 : -1);
     };
-    if (!$('kbOverlay').hidden || !state.quiz) { /* noop, 只是占位 */ }
-    $('kbDeck').addEventListener('touchstart', start, { passive: true });
-    $('kbDeck').addEventListener('touchend', end, { passive: true });
     cardEl.addEventListener('touchstart', start, { passive: true });
     cardEl.addEventListener('touchend', end, { passive: true });
   }
@@ -1362,39 +1429,13 @@
       <div class="rv-card fuzzy"><b>卡片 · 模糊</b><i>${b.cards.fuzzy}</i><span>背卡片时标为模糊</span></div>
       <div class="rv-card unknown"><b>卡片 · 未掌握</b><i>${b.cards.unknown}</i><span>背卡片时标为未掌握</span></div>`;
 
-    const kbSec = `<section class="rv-sec">
-      <div class="rv-sec-head">知识点卡片<span>已标记 ${b.cards.total - b.cards.none} / ${b.cards.total} 张</span></div>
-      <div class="rv-kb-entry">
-        <button class="btn primary" id="rvKbOpen">打开卡片复习</button>
-        <button class="btn ghost" id="rvKbUnknown" ${b.cards.unknown ? '' : 'disabled'}>从未掌握开始</button>
-        <button class="btn ghost" id="rvKbFuzzy" ${b.cards.fuzzy ? '' : 'disabled'}>从模糊开始</button>
-        <span class="rv-gen-hint">卡片是全屏单张翻阅的；三档记忆和下面的选择题错题分开记</span>
-      </div>
-    </section>`;
-
     $('rvBody').innerHTML = `
-      ${kbSec}
       ${rvSection('选择题错题', b.wrong, '错', '这段时间没有错题。')}
       <div class="rv-gen">
         <button class="btn primary" id="rvGen">一键生成当天复习清单</button>
         <span class="rv-gen-hint">只收选择题错题，按「错题」排列</span>
       </div>
       <div id="rvList"></div>`;
-
-    const kbOpen = $('rvKbOpen');
-    if (kbOpen) kbOpen.addEventListener('click', () => { closeReview(); openKb(); });
-    const startFrom = (level) => {
-      const list = MAN_CARDS.filter((c) => kbMemLevel(c.k) === level
-        && (rvView.subject === 'all' || cardSubject(c) === rvView.subject));
-      if (!list.length) return;
-      closeReview();
-      deck.idx = CARD_BY_K.get(list[0].k);
-      openKb(list[0].k);
-    };
-    const kbUnknown = $('rvKbUnknown');
-    if (kbUnknown) kbUnknown.addEventListener('click', () => startFrom('unknown'));
-    const kbFuzzy = $('rvKbFuzzy');
-    if (kbFuzzy) kbFuzzy.addEventListener('click', () => startFrom('fuzzy'));
 
     const gen = $('rvGen');
     gen.disabled = !b.wrong.length;
@@ -1645,8 +1686,10 @@
 
     document.addEventListener('keydown', (e) => {
       const tag = (e.target.tagName || '').toLowerCase();
-      if (!$('kbOverlay').hidden) {
-        if (e.key === 'Escape') { closeKb(); return; }
+
+      // 卡片目录打开时：Esc 关目录，方向键仍可翻卡（目录里的高亮会跟着走）
+      if (tocOpen) {
+        if (e.key === 'Escape') { e.preventDefault(); closeToc(); return; }
         if (tag === 'input' || tag === 'textarea') return;
         if (e.key === 'ArrowLeft') { e.preventDefault(); deckGo(-1); return; }
         if (e.key === 'ArrowRight') { e.preventDefault(); deckGo(1); return; }
@@ -1668,7 +1711,11 @@
       }
 
       if (e.key === '/') { e.preventDefault(); $('noInput').focus(); return; }
-      if (e.key.toLowerCase() === 'k') { e.preventDefault(); openKb(); return; }
+      if (e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (!state.quiz) { tocOpen ? closeToc() : openToc(); } else { enterCardMode(); }
+        return;
+      }
       if (e.key.toLowerCase() === 'v') { e.preventDefault(); openReview(); return; }
       if (e.key === 'ArrowLeft') { e.preventDefault(); goRelative(-1); return; }
       if (e.key === 'ArrowRight') { e.preventDefault(); goRelative(1); return; }
@@ -1699,7 +1746,7 @@
   /* ---------------- 启动 ---------------- */
   function init() {
     bindGlobal();
-    bindKb();
+    bindDeck();
     bindReview();
 
     // 支持分享/书签直链：index.html?id=学科/部分/题型/题号&reveal=1
@@ -1715,7 +1762,7 @@
           state.type = deep.type;
           state.id = deep.id;
           state.revealed = params.get('reveal') === '1';
-          state.quiz = false;
+          state.quiz = true; // 背题已是卡片模式，直链要落在题目上
           if (state.revealed) markSeen(deep);
         }
       }

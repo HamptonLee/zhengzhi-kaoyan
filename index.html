@@ -19,7 +19,6 @@
     <div class="top-actions">
       <button class="btn ghost" id="randomBtn" title="随机抽一题（R）">随机一题</button>
       <button class="btn ghost" id="wrongBtn" title="错题本">错题本 <span class="pill" id="wrongCount">0</span></button>
-      <button class="btn ghost" id="kbBtn" title="知识点手册卡片（K）">知识点</button>
       <button class="btn ghost" id="reviewBtn" title="复习中心：错题与记忆程度汇总（V）">复习</button>
       <button class="btn ghost" id="paperBtn" title="一键组一套真题（16 单选 + 17 多选）">组套卷</button>
       <button class="btn ghost" id="statsBtn" title="统计">统计</button>
@@ -69,8 +68,10 @@
     </aside>
   </main>
 
+  <div class="ktoc" id="ktocPanel" hidden></div>
+
   <footer class="foot">
-    <span>← → 切题 · 1–4 选项 · Enter 提交/下一题 · / 聚焦题号 · R 随机 · K 知识点卡片</span>
+    <span>← → 切题/翻卡 · 1–4 选项 · Enter 提交/展开 · / 聚焦题号 · R 随机 · K 目录</span>
     <span id="progressText"></span>
   </footer>
 </div>
@@ -82,19 +83,6 @@
       <button class="btn ghost" id="modalClose">关闭</button>
     </header>
     <div class="modal-content" id="modalContent"></div>
-  </div>
-</div>
-
-<div class="kb-overlay" id="kbOverlay" hidden>
-  <div class="kb-shell" role="dialog" aria-modal="true" aria-label="知识点手册（按 PDF 原页排版）">
-    <header class="kb-head">
-      <div class="kb-heading">
-        <h2>知识点卡片</h2>
-        <p id="kbSub">加载中…</p>
-      </div>
-      <button class="btn ghost" id="kbClose">关闭</button>
-    </header>
-    <div class="kb-deck" id="kbDeck"></div>
   </div>
 </div>
 
