@@ -1237,3 +1237,26 @@ body.toc-open { overflow: hidden; }
   .acct-shell { width: 100%; max-height: 100vh; height: 100vh; border-radius: 0; border: 0; }
 }
 
+
+/* ---- 窄屏自适应：长选项 / 解析 / 卡片正文都随屏宽折行，避免横向溢出 ---- */
+.stem, .explain, .verdict, .answer-line, .kdeck-title, .kdeck-paras p,
+.kdeck-rel, .kdeck-rel-head, .kdeck-mem-hint, .kdeck-page,
+.option .opt-text, .kb-q, .analysis, .paper-qa p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.option { min-width: 0; }
+.option .opt-text { flex: 1 1 auto; min-width: 0; }
+.options { min-width: 0; }
+.card, .kdeck, .kdeck-card, .kdeck-body, .kdeck-paras, .kdeck-legend { min-width: 0; max-width: 100%; }
+.kdeck-head { flex-wrap: wrap; row-gap: 4px; }
+.kdeck-page { min-width: 0; }
+.kdeck-veil b, .kdeck-veil span { max-width: 100%; }
+
+@media (max-width: 820px) {
+  .kdeck-title { font-size: 20px; margin: 12px 0 14px; }
+  .kdeck-paras p { font-size: 15.5px; line-height: 1.9; }
+  .kdeck-card { padding: 20px 18px; }
+  .option .opt-text { font-size: 14.5px; line-height: 1.65; }
+  .explain { font-size: 14.5px; }
+}

@@ -132,15 +132,24 @@
     const newer = (r.updatedAt || 0) > (l.updatedAt || 0) ? ls : rs;
     const older = (r.updatedAt || 0) > (l.updatedAt || 0) ? rs : ls;
 
+    // 比较优先级：rev 高的更新（改答案会让 rev +1），rev 相同再比 ts；
+    // 这样「改了答案」一定能压过别的设备上的旧记录，不受两边时钟快慢影响。
+    function stamp(v) {
+      if (v && typeof v === 'object') return { rev: v.rev || 0, ts: v.ts || 0 };
+      return { rev: 0, ts: typeof v === 'number' ? v : 0 };
+    }
+    function wins(next, cur) {
+      const a = stamp(cur);
+      const b = stamp(next);
+      if (b.rev !== a.rev) return b.rev > a.rev;
+      return b.ts >= a.ts;
+    }
+
     function mergeTsMap(a, b) {
       const out = {};
       Object.keys(a || {}).forEach((k) => { out[k] = a[k]; });
       Object.keys(b || {}).forEach((k) => {
-        const av = out[k];
-        const bv = b[k];
-        const at = av && (av.ts || (typeof av === 'number' ? av : 0));
-        const bt = bv && (bv.ts || (typeof bv === 'number' ? bv : 0));
-        if (!av || bt >= at) out[k] = bv;
+        if (!(k in out) || wins(b[k], out[k])) out[k] = b[k];
       });
       return out;
     }

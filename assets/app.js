@@ -102,6 +102,7 @@
     picked: [],
     revealed: false,
     submitted: false,
+    editing: false, // 正在改答案：保留上次的选择，重新作答后覆盖记录
     quiz: settings.quiz !== undefined ? settings.quiz !== false : hasAnswers,
     autoNext: settings.autoNext !== false, // 答对自动下一题，默认开
     autoNextMs: clampAutoNextMs(settings.autoNextMs), // 停留时长，默认 900ms
@@ -168,7 +169,15 @@
   }
 
   function recordAttempt(q, picked, correct) {
-    progress[q.id] = { picked: picked.slice(), correct, seen: true, ts: Date.now() };
+    const prev = progress[q.id] || {};
+    // rev 只增不减：改答案后别的设备若还存着旧记录，合并时按 rev 优先，不会被旧记录盖回去
+    progress[q.id] = {
+      picked: picked.slice(),
+      correct: correct,
+      seen: true,
+      ts: Date.now(),
+      rev: (prev.rev || 0) + 1
+    };
     store.set(KEY_PROGRESS, progress);
   }
 
@@ -178,6 +187,18 @@
 
   function scrollCard() {
     cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // 顶栏副标题临时显示一句提示（2.6 秒后重新渲染，恢复真实计数）
+  function toast(text) {
+    const el = document.getElementById('progressText');
+    if (!el) return;
+    el.textContent = text;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => {
+      toast.timer = null;
+      renderFilters();
+    }, 2600);
   }
 
   /* ---------------- 过滤区 ---------------- */
@@ -267,6 +288,25 @@
   }
 
   /* ---------------- 题目卡 ---------------- */
+  // 翻回做过的题时，把上次的选择、对错和解析一起带回来（可查看，也可点「改答案」重做）
+  function restoreAnswered(q) {
+    if (state.paper) {
+      const rec = state.paper.answers && state.paper.answers[q.id];
+      if (rec) {
+        state.picked = (rec.picked || []).slice();
+        state.submitted = true;
+        state.revealed = true;
+      }
+      return;
+    }
+    const rec = progress[q.id];
+    if (rec && typeof rec.correct === 'boolean') {
+      state.picked = (rec.picked || []).slice();
+      state.submitted = true;
+      state.revealed = true;
+    }
+  }
+
   function showQuestion(id, doScroll) {
     const q = findById(id);
     if (!q) return;
@@ -278,6 +318,8 @@
     state.picked = [];
     state.revealed = false;
     state.submitted = false;
+    state.editing = false;
+    restoreAnswered(q);
     saveSettings();
     renderCard();
     renderGrid();
@@ -415,10 +457,15 @@
     let actions = '';
     if (state.quiz) {
       if (!state.submitted && !revealed) {
-        actions = `<button class="btn primary" id="submitBtn" ${state.picked.length ? '' : 'disabled'}>提交答案</button>
-          <button class="btn ghost" id="revealBtn">直接看答案</button>
+        const editing = state.editing;
+        actions = `<button class="btn primary" id="submitBtn" ${state.picked.length ? '' : 'disabled'}>${editing ? '保存新答案' : '提交答案'}</button>
+          ${editing
+            ? '<button class="btn ghost" id="cancelEditBtn">取消</button>'
+            : '<button class="btn ghost" id="revealBtn">直接看答案</button>'}
           <button class="btn ghost" id="prevBtn" ${idx <= 0 ? 'disabled' : ''}>← 上一题</button>
-          <span class="hint">${state.type === '多选' ? '可多选，选完点提交' : '点一个选项，再提交'}</span>`;
+          <span class="hint">${editing
+            ? '按新答案重算：进度与错题会覆盖上次记录'
+            : (state.type === '多选' ? '可多选，选完点提交' : '点一个选项，再提交')}</span>`;
       } else if (!state.submitted && revealed) {
         actions = `<button class="btn primary" id="nextBtn">下一题 →</button>
           <button class="btn ghost" id="revealBtn">收起答案</button>
@@ -432,6 +479,7 @@
               : state.autoNext ? `答对了，${fmtDelay(state.autoNextMs)}后自动进入下一题…` : '答对了 · 点「下一题」继续')
           : '答错了 · 已留在本题，解析见下方';
         actions = `<button class="btn primary" id="nextBtn" ${canAdvance ? '' : 'disabled'}>下一题 →</button>
+          <button class="btn ghost" id="changeBtn">改答案</button>
           <button class="btn ghost" id="prevBtn" ${idx <= 0 ? 'disabled' : ''}>← 上一题</button>
           <span class="hint">${hint}</span>`;
       }
@@ -542,6 +590,31 @@
     const submitBtn = $('submitBtn');
     if (submitBtn) submitBtn.addEventListener('click', () => submitAnswer());
 
+    // 改答案：回到可作答状态，但保留上次的选择做参照；重新提交后覆盖记录
+    const changeBtn = $('changeBtn');
+    if (changeBtn) {
+      changeBtn.addEventListener('click', () => {
+        clearAutoNext();
+        state.editing = true;
+        state.submitted = false;
+        state.revealed = false;
+        renderCard();
+        renderGrid();
+        renderFilters();
+      });
+    }
+
+    const cancelEditBtn = $('cancelEditBtn');
+    if (cancelEditBtn) {
+      cancelEditBtn.addEventListener('click', () => {
+        state.editing = false;
+        restoreAnswered(q);
+        renderCard();
+        renderGrid();
+        renderFilters();
+      });
+    }
+
     // 复习清单内翻题
     cardEl.querySelectorAll('[data-qnav]').forEach((btn) => {
       btn.addEventListener('click', () => queueStep(Number(btn.dataset.qnav)));
@@ -603,6 +676,7 @@
       return;
     }
     if (!state.picked.length) return;
+    const wasEditing = state.editing;
     const picked = state.picked.slice().sort().join('');
     const correct = picked === q.answer.split('').sort().join('');
     recordAttempt(q, state.picked, correct);
@@ -610,13 +684,18 @@
     if (state.paper) {
       state.paper.answers[q.id] = { picked: state.picked.slice(), correct, ts: Date.now() };
     }
+    state.editing = false;
     state.submitted = true;
     state.revealed = true;
     renderCard();
     renderGrid();
     renderFilters();
     scrollToResult(correct);
-    scheduleAutoNext(q, correct);
+    if (wasEditing) {
+      toast(correct ? '已按新答案改正，错题记录已移除' : '已更新为最新答案，错题记录已同步');
+    } else {
+      scheduleAutoNext(q, correct);
+    }
   }
 
   // 手机上提交后把结果滚进视野：答对看判分横幅，答错直接看解析
@@ -1856,13 +1935,7 @@
       render();
     },
     render,
-    toast(text) {
-      const el = document.getElementById('progressText');
-      if (!el) return;
-      const old = el.textContent;
-      el.textContent = text;
-      setTimeout(() => { if (el.textContent === text) el.textContent = old; }, 2600);
-    }
+    toast: (text) => toast(text)
   };
 
   init();
