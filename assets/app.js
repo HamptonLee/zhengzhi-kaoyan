@@ -1057,8 +1057,9 @@
   }
 
   // 在纯文本上按手册彩色词条加高亮：一遍扫描，取最靠前（同位置取最长）的一条，互不重叠
-  function kbHl(text, items) {
-    const list = (items || []).filter((it) => it && it.t);
+  // items 里的 p 字段 = 只在这张卡的第 p 段生效（手册常只给一个锚点字上色，靠段落定位重复字）
+  function kbHl(text, items, pi) {
+    const list = (items || []).filter((it) => it && it.t && (it.p === undefined || it.p === pi));
     if (!list.length) return esc(text);
     let out = '';
     let rest = text;
@@ -1141,7 +1142,7 @@
     const body = shown
       ? (fig
         ? deckFigureHTML(fig)
-        : `<div class="kdeck-paras">${(card.paras || []).map((p) => '<p>' + kbHl(p, point.items) + '</p>').join('')}</div>`
+        : `<div class="kdeck-paras">${(card.paras || []).map((p, pi) => '<p>' + kbHl(p, point.items, pi) + '</p>').join('')}</div>`
           + deckLegendHTML(card, point))
         + (rel.length
           ? `<div class="kdeck-rel"><div class="kdeck-rel-head">相关真题 ${rel.length} 道 · 点一下回到题目</div>`
