@@ -1336,3 +1336,22 @@ body.cfm-open { overflow: hidden; }
 body.cfm-open .acct-pop, body.cfm-open .ktoc { pointer-events: none; }
 
 
+
+/* 套卷计时 + 返回按钮 */
+.paper-clock { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--ink-2);
+  background: #f4efe4; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; margin-left: 2px; }
+.paper-clock[hidden] { display: none; }
+.paper-bar .paper-actions { flex-wrap: wrap; }
+#paperBack[hidden] { display: none; }
+.kdeck-nav { flex-wrap: wrap; }
+.kdeck-nav [data-backpaper] { margin-right: auto; }
+@media (max-width: 720px) {
+  .paper-clock { font-size: 11px; }
+  .paper-bar .paper-actions { gap: 6px; }
+  .paper-bar .paper-actions .btn { padding: 7px 12px; }
+}
+
+/* 返回答题：与「交卷」区分开，但仍显眼 */
+.btn.back { background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(168, 50, 44, .38); }
+.btn.back:hover { background: #f0dcd6; }
+.btn.back[hidden] { display: none; }

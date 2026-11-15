@@ -144,6 +144,55 @@
     return !!(state.paper && state.paper.ids && state.paper.ids.length);
   }
 
+  let paperTimer = null;
+
+  function fmtClock(ms) {
+    const sec = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(sec / 60);
+    return (m < 10 ? '0' : '') + m + ':' + ((sec % 60) < 10 ? '0' : '') + (sec % 60);
+  }
+
+  function paperElapsedText() {
+    if (!inPaper()) return '';
+    return '计时 ' + fmtClock(Date.now() - (state.paper.startedAt || Date.now()));
+  }
+
+  function startPaperClock() {
+    stopPaperClock();
+    paperTimer = setInterval(() => {
+      const el = document.getElementById('paperClock');
+      if (!el) return;
+      if (!inPaper()) { stopPaperClock(); return; }
+      el.textContent = paperElapsedText();
+    }, 1000);
+  }
+
+  function stopPaperClock() {
+    if (paperTimer) { clearInterval(paperTimer); paperTimer = null; }
+  }
+
+  /* 卡片视图里「返回答题」：回到当前题，已选答案与计时都不重置 */
+  function backToPaper() {
+    if (!inPaper()) return;
+    closeToc();
+    state.quiz = true;
+    state.editing = false;
+    state.submitted = false;
+    state.revealed = false;
+    state.picked = [];
+    document.body.classList.remove('card-mode');
+    const q = findById(state.id);
+    if (q) restoreAnswered(q);
+    saveSettings();
+    renderFilters();
+    renderGrid();
+    renderCard();
+    renderPaperBar();
+    const back = document.getElementById('paperBack');
+    if (back) back.hidden = true;
+    scrollCard();
+  }
+
   function findById(id) {
     return DATA.questions.find((q) => q.id === id) || null;
   }
@@ -829,11 +878,26 @@
         ? document.activeElement
         : lastTrigger;
       document.body.classList.add('cfm-open');
+      let pushedGuard = false;
+      try {
+        history.pushState({ cfm: 1 }, '');
+        pushedGuard = true;
+      } catch (_) {}
+      const onPop = () => {
+        /* 用户按了浏览器返回：把历史推回去，确认框保持不动 */
+        if (pushedGuard) { try { history.pushState({ cfm: 1 }, ''); } catch (_) {} }
+      };
+      window.addEventListener('popstate', onPop);
       let finished = false;
       const done = (v) => {
         if (finished) return;
         finished = true;
         document.removeEventListener('keydown', onKey, true);
+        window.removeEventListener('popstate', onPop);
+        if (pushedGuard && history.state && history.state.cfm) {
+          pushedGuard = false;
+          try { history.back(); } catch (_) {}
+        }
         document.body.classList.remove('cfm-open');
         layer.remove();
         try {
@@ -1312,7 +1376,8 @@
   }
 
   function deckNavHTML() {
-    return `<div class="kdeck-nav">
+    const back = inPaper() ? '<button class="btn back" data-backpaper>返回答题</button>' : '';
+    return `<div class="kdeck-nav">${back}
       <button class="btn ghost" data-knav="-1" ${deck.idx <= 0 ? 'disabled' : ''}>← 上一张</button>
       <span class="kdeck-count">${MAN_CARDS.length ? deck.idx + 1 : 0} / ${MAN_CARDS.length}</span>
       <button class="btn ghost" data-knav="1" ${deck.idx >= MAN_CARDS.length - 1 ? 'disabled' : ''}>下一张 →</button>
@@ -1445,6 +1510,7 @@
 
   // 卡片交互：翻页 / 展开 / 记忆档位 / 跳真题 / 目录（委托到常驻容器，页面重绘不用重绑）
   function deckClick(e) {
+    if (e.target.closest('[data-backpaper]')) { e.preventDefault(); backToPaper(); return; }
     const t = e.target;
     if (!t || !t.closest) return;
     if (t.closest('[data-tocclose]')) { e.preventDefault(); closeToc(); return; }
@@ -1716,6 +1782,7 @@
     renderGrid();
     showQuestion(state.paper.ids[0], true);
     renderFilters();
+    startPaperClock();
   }
 
   async function quitPaper() {
@@ -1727,6 +1794,7 @@
     });
     if (!okQuit) return;
     const prevQuiz = state.paper.prevQuiz;
+    stopPaperClock();
     state.paper = null;
     if (typeof prevQuiz === 'boolean') state.quiz = prevQuiz; // 退出后回到原来的模式
     clearAutoNext();
@@ -1741,6 +1809,13 @@
     const answered = Object.keys(p.answers).length;
     $('paperMeta').textContent =
       `已答 ${answered} / ${p.ids.length} · 单选 ${PAPER_SINGLE} 题 × 1 分 · 多选 ${PAPER_MULTI} 题 × 2 分 · 满分 ${PAPER_FULL}`;
+    const clock = document.getElementById('paperClock');
+    if (clock) {
+      clock.hidden = false;
+      clock.textContent = paperElapsedText();
+    }
+    const back = document.getElementById('paperBack');
+    if (back) back.hidden = !document.body.classList.contains('card-mode');
   }
 
   function paperIntro() {
@@ -1764,6 +1839,7 @@
   async function finishPaper() {
     const paper = state.paper;
     if (!paper) return;
+    stopPaperClock();
     const answered = Object.keys(paper.answers).length;
     if (answered < paper.ids.length) {
       const left = paper.ids.length - answered;
@@ -1868,6 +1944,7 @@
     $('reviewBtn').addEventListener('click', openReview);
     $('paperBtn').addEventListener('click', paperIntro);
     $('paperSubmit').addEventListener('click', finishPaper);
+  $('paperBack').addEventListener('click', backToPaper);
     $('paperQuit').addEventListener('click', quitPaper);
     $('statsBtn').addEventListener('click', showStats);
     $('resetBtn').addEventListener('click', showResetModal);
