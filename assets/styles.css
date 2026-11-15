@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg: #f4f1ea;
   --paper: #fffdf8;
   --ink: #1d1b18;
@@ -1151,5 +1151,14 @@ body.toc-open { overflow: hidden; }
   .ktoc-title { flex: 1 1 100%; order: -1; }
   .ktoc-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ktoc-body { padding: 4px 14px 20px; }
+}
+
+
+/* ---------- 卡片里的图（037 时间脉络） ---------- */
+.kdeck-fig { margin: 2px 0 4px; display: block; }
+.kdeck-fig img { display: block; width: 100%; height: auto; background: #fffdf8; }
+@media (max-width: 820px) {
+  /* 手机上用 <picture> 的窄版那张，不再横向拖动 */
+  .kdeck-fig img { width: 100%; }
 }
 

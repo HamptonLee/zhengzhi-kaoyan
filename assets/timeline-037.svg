@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="874" viewBox="0 0 820 874" role="img" aria-label="史纲整体脉络时间轴">
+<rect width="100%" height="100%" fill="#fffdf8"/>
+<text x="30" y="48" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="13.5" fill="#8a8377">1840 — 至今 · 一条主线：国情 → 任务 → 道路 → 理论</text>
+<text x="30" y="72" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12.5" fill="#a8322c" letter-spacing="1">中国近现代史 · 六大阶段</text>
+<line x1="30" y1="82" x2="786" y2="82" stroke="#e2dcd0" stroke-width="1"/>
+<line x1="96" y1="72" x2="96" y2="746" stroke="#e2dcd0" stroke-width="2"/>
+<rect x="30" y="80" width="756" height="130" rx="12" fill="#f4f2ee"/>
+<rect x="30" y="80" width="4" height="130" rx="2" fill="#6b7280"/>
+<circle cx="96" cy="94" r="7" fill="#6b7280"/>
+<circle cx="96" cy="94" r="13" fill="#6b7280" opacity="0.14"/>
+<text x="126" y="101" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="18" font-weight="700" fill="#1d1b18">旧民主主义革命</text>
+<text x="770" y="100" text-anchor="end" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12.5" fill="#6b7280">1840 — 1919</text>
+<text x="126" y="116" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1840 鸦片战争　·　1842《南京条约》　·　1851 太平天国</text>
+<text x="126" y="140" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1861 洋务运动　·　1894 甲午战争　·　1898 戊戌变法</text>
+<text x="126" y="164" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1900 八国联军　·　1901《辛丑条约》　·　1905 同盟会</text>
+<text x="126" y="188" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1911 辛亥革命　·　1912 中华民国成立</text>
+<rect x="30" y="220" width="756" height="150" rx="12" fill="#fbf1ef"/>
+<rect x="30" y="220" width="4" height="150" rx="2" fill="#a8322c"/>
+<circle cx="96" cy="234" r="7" fill="#a8322c"/>
+<circle cx="96" cy="234" r="13" fill="#a8322c" opacity="0.14"/>
+<text x="126" y="241" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="18" font-weight="700" fill="#1d1b18">新民主主义革命</text>
+<text x="770" y="240" text-anchor="end" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12.5" fill="#a8322c">1919 — 1949</text>
+<text x="126" y="256" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1919 五四运动　·　1921 中共一大　·　1924 国共合作</text>
+<text x="126" y="280" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1927 井冈山　·　1931 九一八　·　1934 长征开始</text>
+<text x="126" y="304" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1935 遵义会议　·　1937 全面抗战　·　1945 中共七大</text>
+<text x="126" y="328" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1946 解放战争　·　1949 新中国成立</text>
+<text x="126" y="354" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12" fill="#8a8377">大革命 1924—1927 · 土地革命 1927—1937 · 抗战 1937—1945 · 解放战争 1945—1949</text>
+<rect x="30" y="380" width="756" height="82" rx="12" fill="#fbf4ea"/>
+<rect x="30" y="380" width="4" height="82" rx="2" fill="#b06a2c"/>
+<circle cx="96" cy="394" r="7" fill="#b06a2c"/>
+<circle cx="96" cy="394" r="13" fill="#b06a2c" opacity="0.14"/>
+<text x="126" y="401" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="18" font-weight="700" fill="#1d1b18">社会主义革命</text>
+<text x="770" y="400" text-anchor="end" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12.5" fill="#b06a2c">1949 — 1956</text>
+<text x="126" y="416" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1949 新中国成立　·　1953 一五计划 · 过渡时期总路线</text>
+<text x="126" y="440" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1956 三大改造完成　·　社会主义基本制度确立</text>
+<rect x="30" y="472" width="756" height="82" rx="12" fill="#f8f5ea"/>
+<rect x="30" y="472" width="4" height="82" rx="2" fill="#8a7a3c"/>
+<circle cx="96" cy="486" r="7" fill="#8a7a3c"/>
+<circle cx="96" cy="486" r="13" fill="#8a7a3c" opacity="0.14"/>
+<text x="126" y="493" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="18" font-weight="700" fill="#1d1b18">社会主义建设</text>
+<text x="770" y="492" text-anchor="end" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12.5" fill="#8a7a3c">1956 — 1978</text>
+<text x="126" y="508" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1956 中共八大　·　1956《论十大关系》</text>
+<text x="126" y="532" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1957《关于正确处理人民内部矛盾的问题》　·　1966—1976 文化大革命</text>
+<rect x="30" y="564" width="756" height="106" rx="12" fill="#eef4f1"/>
+<rect x="30" y="564" width="4" height="106" rx="2" fill="#2f6b5a"/>
+<circle cx="96" cy="578" r="7" fill="#2f6b5a"/>
+<circle cx="96" cy="578" r="13" fill="#2f6b5a" opacity="0.14"/>
+<text x="126" y="585" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="18" font-weight="700" fill="#1d1b18">改革开放新时期</text>
+<text x="770" y="584" text-anchor="end" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12.5" fill="#2f6b5a">1978 — 2012</text>
+<text x="126" y="600" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1978 十一届三中全会　·　1982 中共十二大</text>
+<text x="126" y="624" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">1992 南方谈话 · 十四大　·　1997 香港回归 · 十五大</text>
+<text x="126" y="648" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">2001 加入 WTO　·　2007 中共十七大　·　2010 成为世界第二大经济体</text>
+<rect x="30" y="680" width="756" height="82" rx="12" fill="#fbf1ef"/>
+<rect x="30" y="680" width="4" height="82" rx="2" fill="#a8322c"/>
+<circle cx="96" cy="694" r="7" fill="#a8322c"/>
+<circle cx="96" cy="694" r="13" fill="#a8322c" opacity="0.14"/>
+<text x="126" y="701" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="18" font-weight="700" fill="#1d1b18">新时代</text>
+<text x="770" y="700" text-anchor="end" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12.5" fill="#a8322c">2012 — 至今</text>
+<text x="126" y="716" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">2012 中共十八大　·　2017 中共十九大</text>
+<text x="126" y="740" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="14" fill="#3d3934">2021 建党百年 · 全面建成小康社会　·　2022 中共二十大</text>
+<line x1="30" y1="794" x2="786" y2="794" stroke="#e2dcd0" stroke-width="1"/>
+<text x="30" y="816" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12.5" fill="#8a8377">社会性质</text>
+<rect x="94" y="798" width="330" height="26" rx="13" fill="#f4f2ee"/>
+<text x="108" y="816" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12.5" fill="#3d3934">1840—1956 半殖民地半封建社会</text>
+<rect x="434" y="798" width="300" height="26" rx="13" fill="#fbf1ef"/>
+<text x="448" y="816" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="12.5" fill="#a8322c">1956 至今 社会主义初级阶段</text>
+</svg>

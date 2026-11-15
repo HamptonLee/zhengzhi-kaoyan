@@ -1095,14 +1095,37 @@
     </div>`;
   }
 
+  // 少数卡片在手册里原本就是图（不是文字），这里用矢量图原样交付
+  // 宽屏一张六段横排，窄屏换成单列版本（同一份内容，一行一件事），保证手机上字号可读
+  const CARD_FIGURE = {
+    '037': {
+      src: 'assets/timeline-037.svg',
+      narrow: 'assets/timeline-037-v.svg',
+      alt: '史纲整体脉络时间轴：1840 年至今六个阶段与关键事件',
+    },
+  };
+
+  function deckFigureHTML(fig) {
+    if (fig.narrow) {
+      return `<picture class="kdeck-fig">
+        <source media="(max-width: 820px)" srcset="${fig.narrow}">
+        <img src="${fig.src}" alt="${esc(fig.alt)}" loading="lazy">
+      </picture>`;
+    }
+    return `<div class="kdeck-fig"><img src="${fig.src}" alt="${esc(fig.alt)}" loading="lazy"></div>`;
+  }
+
   function deckCardHTML(i) {
     const card = MAN_CARDS[i];
     if (!card) return '<div class="empty-state">手册数据还没加载好。</div>';
     const point = KB_BY_K.get(card.k) || { items: [] };
     const shown = !!deck.shown[card.k];
     const rel = kbRelated(card.k);
+    const fig = CARD_FIGURE[card.k];
     const body = shown
-      ? `<div class="kdeck-paras">${(card.paras || []).map((p) => '<p>' + kbHl(p, point.items) + '</p>').join('')}</div>`
+      ? (fig
+        ? deckFigureHTML(fig)
+        : `<div class="kdeck-paras">${(card.paras || []).map((p) => '<p>' + kbHl(p, point.items) + '</p>').join('')}</div>`)
         + (rel.length
           ? `<div class="kdeck-rel"><div class="kdeck-rel-head">相关真题 ${rel.length} 道 · 点一下回到题目</div>`
             + rel.map((q) => `<button class="kb-q" data-q="${esc(q.id)}">${esc(q.type)} ${q.no}<i>${q.year}</i></button>`).join('')
@@ -1111,7 +1134,7 @@
         + deckMarkedHTML(card.k)
       : `<button class="kdeck-veil" data-reveal>
            <b>点击查看这张卡</b>
-           <span>先自己回忆：这个知识点讲什么，再点开对照全文</span>
+           <span>${fig ? '这是一张时间轴图，点开看大图' : '先自己回忆：这个知识点讲什么，再点开对照全文'}</span>
          </button>`;
     return `<article class="kdeck-card${shown ? ' shown' : ''}" data-k="${esc(card.k)}">
       <div class="kdeck-head">
