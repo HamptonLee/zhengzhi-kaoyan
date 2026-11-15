@@ -1053,7 +1053,7 @@
   const deck = { idx: 0, shown: Object.create(null) };
 
   function kwCls(c) {
-    return c === 'core' ? 'kw-core' : c === 'ok' ? 'kw-ok' : c === 'none' ? 'kw-none' : 'kw-limit';
+    return c === 'core' ? 'kw-core' : c === 'warm' ? 'kw-warm' : c === 'ok' ? 'kw-ok' : c === 'none' ? 'kw-none' : 'kw-limit';
   }
 
   // 在纯文本上按手册彩色词条加高亮：一遍扫描，取最靠前（同位置取最长）的一条，互不重叠
@@ -1076,6 +1076,22 @@
       rest = rest.slice(at + pick.t.length);
     }
     return out;
+  }
+
+  // 卡片下方的小图例：和 PDF 上的三种颜色一一对应
+  function deckLegendHTML(card, point) {
+    const paras = card.paras || [];
+    const items = (point.items || []).filter((it) => it && it.t);
+    if (!items.length) return '';
+    const has = (cls) => items.some((it) => kwCls(it.c) === cls && paras.some((p) => p.indexOf(it.t) >= 0));
+    if (!has('kw-core') && !has('kw-warm') && !has('kw-limit') && !has('kw-ok')) return '';
+    const row = (cls, name, desc) => (has(cls)
+      ? `<span class="kleg"><i class="kleg-s ${cls}"></i>${name}<b>${desc}</b></span>`
+      : '');
+    return `<div class="kdeck-legend">${row('kw-core', '红', '核心结论（答案落点）')}`
+      + `${row('kw-warm', '橙', '强调补充（举例 / 助记）')}`
+      + `${row('kw-limit', '蓝', '前提限定（主体 / 范围 / 条件）')}`
+      + `${row('kw-ok', '绿', '正误判断（手册 ✅ / ❌ 的行）')}</div>`;
   }
 
   function deckSub(card) {
@@ -1125,7 +1141,8 @@
     const body = shown
       ? (fig
         ? deckFigureHTML(fig)
-        : `<div class="kdeck-paras">${(card.paras || []).map((p) => '<p>' + kbHl(p, point.items) + '</p>').join('')}</div>`)
+        : `<div class="kdeck-paras">${(card.paras || []).map((p) => '<p>' + kbHl(p, point.items) + '</p>').join('')}</div>`
+          + deckLegendHTML(card, point))
         + (rel.length
           ? `<div class="kdeck-rel"><div class="kdeck-rel-head">相关真题 ${rel.length} 道 · 点一下回到题目</div>`
             + rel.map((q) => `<button class="kb-q" data-q="${esc(q.id)}">${esc(q.type)} ${q.no}<i>${q.year}</i></button>`).join('')

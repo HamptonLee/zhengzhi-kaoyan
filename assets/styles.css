@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #f4f1ea;
   --paper: #fffdf8;
   --ink: #1d1b18;
@@ -1161,4 +1161,29 @@ body.toc-open { overflow: hidden; }
   /* 手机上用 <picture> 的窄版那张，不再横向拖动 */
   .kdeck-fig img { width: 100%; }
 }
+
+
+/* ---------- 卡片正文的三种颜色：取自手册 PDF 的实际墨色 ---------- */
+.kdeck-paras .kw-core { color: #e0322a; background: #fdeeec; border-bottom: 1px solid rgba(224, 50, 42, .38); }
+.kdeck-paras .kw-warm { color: #ed5f10; background: #fdf2e8; border-bottom: 1px solid rgba(237, 95, 16, .33); }
+.kdeck-paras .kw-limit { color: #2b57cf; background: #eef2fd; border-bottom: 1px solid rgba(43, 87, 207, .33); }
+.kdeck-paras .kw-ok { color: #0a9c3c; background: #eaf7ee; border-bottom: 1px solid rgba(10, 156, 60, .35); }
+
+/* 卡片下方的颜色图例 */
+.kdeck-legend { margin-top: 14px; padding-top: 11px; border-top: 1px dashed var(--line);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px 18px; font-size: 12px; color: var(--ink-3); }
+.kdeck-legend::before { content: "图例"; font-size: 11px; letter-spacing: .12em; color: var(--ink-3); }
+.kleg { display: inline-flex; align-items: center; gap: 6px; }
+.kleg b { font-weight: 400; color: var(--ink-2); }
+.kleg-s { width: 15px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
+.kleg-s.kw-core { background: #e0322a; }
+.kleg-s.kw-warm { background: #ed5f10; }
+.kleg-s.kw-limit { background: #2b57cf; }
+.kleg-s.kw-ok { background: #0a9c3c; }
+
+@media (max-width: 820px) {
+  .kdeck-legend { gap: 6px 14px; font-size: 11.5px; }
+  .kdeck-legend::before { display: none; }
+}
+
 
