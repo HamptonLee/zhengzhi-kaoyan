@@ -270,6 +270,9 @@
     document.body.classList.add('acct-open');
     render();
     if (configured && session) bootSync();
+    if (configured) {
+      checkTable().then(() => render());
+    }
   }
 
   function close() {
@@ -290,7 +293,27 @@
     ensureDom();
     if (!overlay || overlay.hidden) return;
     if (subEl) subEl.textContent = statusLine();
-    bodyEl.innerHTML = configured ? (session ? signedInHTML() : signedOutHTML()) : unconfiguredHTML();
+    if (!configured) { bodyEl.innerHTML = unconfiguredHTML(); return; }
+    if (tableState.ok === false && tableState.reason === 'notable') { bodyEl.innerHTML = tableMissingHTML(); return; }
+    bodyEl.innerHTML = session ? signedInHTML() : signedOutHTML();
+  }
+
+  function setupSQLBlock() {
+    return `<pre class="acct-sql" id="acctSql">${SETUP_SQL.replace(/</g, '&lt;')}</pre>
+      <button class="btn ghost" data-act="copysql">复制 SQL</button>`;
+  }
+
+  function tableMissingHTML() {
+    return `
+      <div class="acct-note">
+        <b>后端已连上，只差建表这一步</b>
+        <p>项目地址和 key 都通了（认证服务可以访问），但库里还没有 <code>${TABLE}</code> 这张表。把下面这段贴进 Supabase 的 <b>SQL Editor</b> 执行一次就好：</p>
+      </div>
+      ${setupSQLBlock()}
+      <div class="acct-note small">
+        <p>执行完回到这里重开面板，就会切成登录界面。</p>
+        <p>另外在 <b>Authentication → Providers → Email</b> 里把「Confirm email」关掉，注册后就能直接登录、不用点邮件。</p>
+      </div>`;
   }
 
   function unconfiguredHTML() {
@@ -363,6 +386,27 @@
   }
 
   let flash = null;
+  let tableState = { ok: null, reason: '', msg: '' };
+
+  async function checkTable() {
+    if (!configured) { tableState = { ok: false, reason: 'noconfig' }; return tableState; }
+    try {
+      const res = await fetch(`${BASE}/rest/v1/${TABLE}?select=user_id&limit=1`, { headers: { apikey: ANON } });
+      if (res.status === 404) {
+        const j = await res.json().catch(() => null);
+        if (j && j.code === 'PGRST205') { tableState = { ok: false, reason: 'notable' }; return tableState; }
+      }
+      if (res.status === 401 || res.status === 200 || res.status === 206) {
+        tableState = { ok: true, reason: '' };
+        return tableState;
+      }
+      tableState = { ok: false, reason: 'http', msg: 'HTTP ' + res.status };
+      return tableState;
+    } catch (e) {
+      tableState = { ok: false, reason: 'net', msg: e.message };
+      return tableState;
+    }
+  }
   function msg(text, kind) {
     flash = text ? { text: String(text), kind: kind || '' } : null;
     paintMsg();

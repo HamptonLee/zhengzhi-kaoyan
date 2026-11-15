@@ -1,9 +1,8 @@
-﻿/* 云同步配置（可选）。
-   留空 = 不启用账号功能，所有数据只保存在本机浏览器里。
-   想启用：在 https://supabase.com 建一个免费项目，把 Project URL 和 anon public key 填进来，
-   再把「账号」面板里那段建表 SQL 在 SQL Editor 跑一遍即可。 */
+/* 云同步配置。
+   url / anonKey（新版叫 publishable key）是公开信息，会被打包进前端，可以提交；
+   数据库密码、service_role key 属于机密，绝对不要写进这里。 */
 window.ZZ_AUTH = {
-  url: '',
-  anonKey: '',
+  url: 'https://xsepwkfrqwzpcoddwstl.supabase.co',
+  anonKey: 'sb_publishable_C_hNSmhnhHg-9lE-VwkD-A_1B-Q4Sd8',
   table: 'zz_sync'
 };
