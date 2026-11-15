@@ -229,20 +229,32 @@
 
   async function bootSync() {
     if (!configured || !session) return;
+    syncing = true;
+    paintChips();
     try {
       await syncNow(false);
-      render();
+      meta.lastError = null;
     } catch (e) {
       meta.lastError = e.message;
+      meta.lastErrorAt = Date.now();
+    } finally {
+      syncing = false;
       saveMeta();
+      render();
     }
   }
 
   /* ---------------- 界面 ---------------- */
-  let overlay = null;
+  let pop = null;       // 下拉面板
+  let chipEl = null;    // 账号按钮
+  let chipText = null;  // 账号按钮上的文字
+  let syncChip = null;  // 同步状态按钮
+  let syncDot = null;
+  let syncText = null;
   let bodyEl = null;
   let subEl = null;
   let busy = false;
+  let syncing = false;
 
   const SETUP_SQL = [
     'create table if not exists public.zz_sync (',
@@ -257,25 +269,52 @@
   ].join('\n');
 
   function ensureDom() {
-    if (overlay) return;
-    overlay = document.getElementById('acctOverlay');
+    if (pop) return;
+    pop = document.getElementById('acctPop');
+    chipEl = document.getElementById('acctChip');
+    chipText = document.getElementById('acctChipText');
+    syncChip = document.getElementById('syncChip');
+    syncDot = document.getElementById('syncDot');
+    syncText = document.getElementById('syncText');
     bodyEl = document.getElementById('acctBody');
     subEl = document.getElementById('acctSub');
-    if (!overlay) return;
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) close();
+    if (!pop || !chipEl) return;
+
+    pop.addEventListener('click', (e) => {
       const act = e.target.closest('[data-act]');
-      if (!act) return;
-      onAction(act.dataset.act);
+      if (act) onAction(act.dataset.act);
     });
     const closeBtn = document.getElementById('acctClose');
-    if (closeBtn) closeBtn.addEventListener('click', close);
+    if (closeBtn) closeBtn.addEventListener('click', (e) => { e.stopPropagation(); close(); });
+    chipEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (pop.hidden) open(); else close();
+    });
+    if (syncChip) {
+      syncChip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (pop.hidden) open();
+        if (session && configured) {
+          busyRun(() => syncNow(true));
+        }
+      });
+    }
+    document.addEventListener('click', (e) => {
+      if (pop.hidden) return;
+      if (pop.contains(e.target) || chipEl.contains(e.target) || (syncChip && syncChip.contains(e.target))) return;
+      close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); close(); }
+    });
+    paintChips();
   }
 
   function open() {
     ensureDom();
-    if (!overlay) return;
-    overlay.hidden = false;
+    if (!pop) return;
+    pop.hidden = false;
+    chipEl.setAttribute('aria-expanded', 'true');
     document.body.classList.add('acct-open');
     render();
     if (configured && session) bootSync();
@@ -285,9 +324,58 @@
   }
 
   function close() {
-    if (!overlay) return;
-    overlay.hidden = true;
+    if (!pop) return;
+    pop.hidden = true;
+    chipEl.setAttribute('aria-expanded', 'false');
     document.body.classList.remove('acct-open');
+  }
+
+  /* 右上角两个入口：账号 + 同步状态 */
+  function shortName(email) {
+    if (!email) return '账号';
+    const local = String(email).split('@')[0];
+    return local.length > 12 ? local.slice(0, 11) + '…' : local;
+  }
+
+  function paintChips() {
+    if (!chipEl) return;
+    const on = !!session;
+    chipText.textContent = on ? shortName(session.email) : '登录';
+    chipEl.classList.toggle('on', on);
+    chipEl.title = on ? (session.email + ' · 点开账号与云同步') : '登录 / 注册（云同步）';
+
+    if (!syncChip) return;
+    if (!configured || !on) { syncChip.hidden = true; return; }
+    syncChip.hidden = false;
+    const bad = meta.lastError && (!meta.lastSync || meta.lastErrorAt > meta.lastSync);
+    syncChip.classList.toggle('sync-ok', !bad && !!meta.lastSync);
+    syncChip.classList.toggle('sync-bad', !!bad);
+    syncChip.classList.toggle('sync-busy', syncing);
+    if (syncing) syncText.textContent = '同步中';
+    else if (bad) syncText.textContent = '待重试';
+    else if (meta.lastSync) syncText.textContent = fmtTime(meta.lastSync);
+    else syncText.textContent = '未同步';
+    syncChip.title = bad ? ('同步出错：' + meta.lastError) : ('上次同步 ' + (meta.lastSync ? fmtTime(meta.lastSync) : '—') + ' · 点一下立即同步');
+  }
+
+  async function busyRun(fn) {
+    if (busy) return;
+    busy = true;
+    syncing = true;
+    paintChips();
+    try {
+      const r = await fn();
+      msg(r && r.pulled ? '已合并云端与本机' : '已同步到云端', 'ok');
+    } catch (e) {
+      meta.lastError = e.message;
+      meta.lastErrorAt = Date.now();
+      saveMeta();
+      msg(e.message, 'bad');
+    } finally {
+      busy = false;
+      syncing = false;
+      render();
+    }
   }
 
   function statusLine() {
@@ -300,7 +388,8 @@
 
   function render() {
     ensureDom();
-    if (!overlay || overlay.hidden) return;
+    paintChips();
+    if (!pop || pop.hidden) return;
     if (subEl) subEl.textContent = statusLine();
     if (!configured) { bodyEl.innerHTML = unconfiguredHTML(); return; }
     if (tableState.ok === false && tableState.reason === 'notable') { bodyEl.innerHTML = tableMissingHTML(); return; }
@@ -448,6 +537,7 @@
         msg('同步中…');
         const r = await syncNow(true);
         busy = false;
+        meta.lastError = null; meta.lastErrorAt = 0; saveMeta();
         msg(r.pulled ? '已合并云端并回传' : '已上传到云端', 'ok');
         render();
         return;
@@ -458,7 +548,8 @@
         const row = await pull();
         if (!row) { msg('云端还没有数据', 'warn'); busy = false; return; }
         applyPayload(row.payload);
-        meta.lastPull = Date.now(); meta.lastSync = Date.now(); saveMeta();
+        meta.lastPull = Date.now(); meta.lastSync = Date.now();
+        meta.lastError = null; meta.lastErrorAt = 0; saveMeta();
         busy = false;
         msg('已用云端数据覆盖本机', 'ok');
         render();
@@ -468,6 +559,7 @@
         busy = true;
         msg('上传中…');
         await push(snap());
+        meta.lastError = null; meta.lastErrorAt = 0; saveMeta();
         busy = false;
         msg('已上传', 'ok');
         render();
@@ -515,6 +607,7 @@
           }
           const syncRes = await syncNow(false);
           busy = false;
+          meta.lastError = null; meta.lastErrorAt = 0; saveMeta();
           msg(syncRes.pulled ? '登录成功，已合并云端数据' : '登录成功，本机数据已上传', 'ok');
           render();
         } catch (err) {
@@ -550,22 +643,18 @@
     _render: () => render()
   };
 
-  // 顶栏按钮
-  document.addEventListener('DOMContentLoaded', () => {
-    const btn = document.getElementById('accountBtn');
-    if (btn) {
-      btn.addEventListener('click', () => open());
-      if (configured && session) {
-        bootSync();
-      }
-      updateButton();
+  // 启动：先把右上角的两个药丸和下拉绑上，再恢复登录态
+  function init() {
+    ensureDom();
+    paintChips();
+    if (configured && session) {
+      bootSync();
     }
-  });
+  }
 
-  function updateButton() {
-    const btn = document.getElementById('accountBtn');
-    if (!btn) return;
-    btn.classList.toggle('on', !!(configured && session));
-    btn.title = configured ? (session ? '已登录：' + (session.email || '') : '登录 / 注册，云同步进度') : '账号与云同步（未配置后端）';
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
   }
 })();

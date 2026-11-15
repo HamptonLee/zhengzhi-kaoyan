@@ -16,15 +16,36 @@
         <p class="brand-sub" id="brandSub">1994–2025 · 加载中…</p>
       </div>
     </div>
-    <div class="top-actions">
-      <button class="btn ghost" id="randomBtn" title="随机抽一题（R）">随机一题</button>
-      <button class="btn ghost" id="wrongBtn" title="错题本">错题本 <span class="pill" id="wrongCount">0</span></button>
-      <button class="btn ghost" id="reviewBtn" title="复习中心：错题与记忆程度汇总（V）">复习</button>
-      <button class="btn ghost" id="paperBtn" title="一键组一套真题（16 单选 + 17 多选）">组套卷</button>
-      <button class="btn ghost" id="statsBtn" title="统计">统计</button>
-      <button class="btn ghost" id="accountBtn" title="账号与云同步">账号</button>
-      <button class="btn ghost" id="resetBtn" title="二刷 / 重置">二刷·重置</button>
-      <button class="btn" id="modeBtn" title="切换背题 / 自测（M）">自测模式</button>
+    <div class="top-right">
+      <div class="top-actions">
+        <button class="btn ghost" id="randomBtn" title="随机抽一题（R）">随机一题</button>
+        <button class="btn ghost" id="wrongBtn" title="错题本">错题本 <span class="pill" id="wrongCount">0</span></button>
+        <button class="btn ghost" id="reviewBtn" title="复习中心：错题与记忆程度汇总（V）">复习</button>
+        <button class="btn ghost" id="paperBtn" title="一键组一套真题（16 单选 + 17 多选）">组套卷</button>
+        <button class="btn ghost" id="statsBtn" title="统计">统计</button>
+        <button class="btn ghost" id="resetBtn" title="二刷 / 重置">二刷·重置</button>
+        <button class="btn" id="modeBtn" title="切换背题 / 自测（M）">自测模式</button>
+      </div>
+
+      <div class="corner" id="corner">
+        <button class="chip-sync" id="syncChip" type="button" title="云同步状态" hidden>
+          <i class="dot" id="syncDot"></i><span id="syncText">云同步</span>
+        </button>
+        <button class="chip-acct" id="acctChip" type="button" aria-haspopup="dialog" aria-expanded="false" title="账号">
+          <span id="acctChipText">登录</span>
+          <svg class="caret" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+
+        <div class="acct-pop" id="acctPop" role="dialog" aria-label="账号与云同步" hidden>
+          <header class="acct-pop-head">
+            <div class="acct-pop-title">
+              <b id="acctSub">账号与云同步</b>
+            </div>
+            <button class="pop-x" id="acctClose" type="button" aria-label="收起">✕</button>
+          </header>
+          <div class="acct-body" id="acctBody"></div>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -108,19 +129,6 @@
     </div>
     <div class="rv-grid" id="rvGrid"></div>
     <div class="rv-body" id="rvBody"></div>
-  </div>
-</div>
-
-<div class="acct" id="acctOverlay" hidden>
-  <div class="acct-shell" role="dialog" aria-modal="true" aria-label="账号与云同步">
-    <header class="acct-head">
-      <div class="acct-heading">
-        <h2>账号与云同步</h2>
-        <p id="acctSub">加载中…</p>
-      </div>
-      <button class="btn ghost" id="acctClose">关闭</button>
-    </header>
-    <div class="acct-body" id="acctBody"></div>
   </div>
 </div>
 
