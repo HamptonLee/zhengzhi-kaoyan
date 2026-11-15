@@ -22,6 +22,7 @@
       <button class="btn ghost" id="reviewBtn" title="复习中心：错题与记忆程度汇总（V）">复习</button>
       <button class="btn ghost" id="paperBtn" title="一键组一套真题（16 单选 + 17 多选）">组套卷</button>
       <button class="btn ghost" id="statsBtn" title="统计">统计</button>
+      <button class="btn ghost" id="accountBtn" title="账号与云同步">账号</button>
       <button class="btn ghost" id="resetBtn" title="二刷 / 重置">二刷·重置</button>
       <button class="btn" id="modeBtn" title="切换背题 / 自测（M）">自测模式</button>
     </div>
@@ -110,10 +111,25 @@
   </div>
 </div>
 
+<div class="acct" id="acctOverlay" hidden>
+  <div class="acct-shell" role="dialog" aria-modal="true" aria-label="账号与云同步">
+    <header class="acct-head">
+      <div class="acct-heading">
+        <h2>账号与云同步</h2>
+        <p id="acctSub">加载中…</p>
+      </div>
+      <button class="btn ghost" id="acctClose">关闭</button>
+    </header>
+    <div class="acct-body" id="acctBody"></div>
+  </div>
+</div>
+
 <script src="data/questions.js"></script>
 <script src="data/keywords.js"></script>
 <script src="data/handbook.js"></script>
 <script src="data/manual.js"></script>
+<script src="data/auth-config.js"></script>
 <script src="assets/app.js"></script>
+<script src="assets/account.js"></script>
 </body>
 </html>

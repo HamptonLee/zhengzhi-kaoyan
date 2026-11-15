@@ -128,6 +128,45 @@ window.ZZ_MANUAL = {
 
 > 手册 PDF 的文字层没有 ToUnicode，复制出来是乱码（U+FFFD）。正文是用 Windows 内置 OCR（zh-Hans）在 300 dpi 下逐页识别、按列和「知识点 NNN」切卡片得到的，随后**25 页逐页对着页图人工精校过一遍**（700 余行重写：错字、徽标残留、断行、年份里的乱码数字）。卡片标题与彩色词条来自 `data/handbook.js`，那是逐页看图的转录结果。
 
+## 账号与云同步（可选）
+
+换设备要接着用，就得把数据放到云端。这是个纯静态站点（GitHub Pages，没有自己的服务器），所以我用 **Supabase** 的免费项目做后端：它负责账号密码认证，只用一张表存一份 JSON 快照。**不配置也能用**，只是数据只存在当前这台设备。
+
+配置三步（大约五分钟，一次就好）：
+
+1. 去 [supabase.com](https://supabase.com) 建一个免费项目。
+2. 打开 **SQL Editor**，把下面这段贴进去执行（建表 + 行级权限，每个账号只能读写自己那一行）：
+
+```sql
+create table if not exists public.zz_sync (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  payload jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.zz_sync enable row level security;
+create policy "own row read" on public.zz_sync for select using (auth.uid() = user_id);
+create policy "own row write" on public.zz_sync for insert with check (auth.uid() = user_id);
+create policy "own row update" on public.zz_sync for update using (auth.uid() = user_id);
+```
+
+3. 在 **Project Settings → API** 复制 `Project URL` 和 `anon public` 两个值，填进 `data/auth-config.js`：
+
+```js
+window.ZZ_AUTH = {
+  url: 'https://xxxx.supabase.co',
+  anonKey: 'eyJhbGciOi…',
+  table: 'zz_sync'
+};
+```
+
+另外在 **Authentication → Providers → Email** 里把「Confirm email」关掉，注册完就能直接登录。
+
+**同步什么**：做题进度与错题（`zz.progress.v1`）、卡片记忆程度（`settings.kbMem`）、已复习标记（`settings.kb`）、偏好设置。合并规则是**按每条记录自己的时间戳取新的**，所以两台设备都做过题也不会互相覆盖。
+
+**安全**：密码只交给 Supabase 认证服务，前端不保存密码，也不存 token 到云端；数据行带 RLS，别的账号读不到。`anon key` 是公开的（它只用来标识项目，权限由 RLS 兜底），放进前端没问题。
+
+顶栏「账号」按钮：登录后可以开/关自动同步，也可以手动「立即同步」「从云端覆盖本机」「把本机传到云端」。
+
 ## 快速开始
 
 直接双击 `index.html`（或 `打开真题速查.bat`）即可，仓库里已经带 **497 题完整题库**（1994–2025），打开就能查。
@@ -183,8 +222,10 @@ index.html                   界面
 assets/                      app.js / styles.css / preview.png
 data/questions.js            网页实际加载的题库（497 题）
 data/keywords.js             题目关键词标注（1907 处）
-data/handbook.js             知识点手册词条（100 条知识点 / 585 条彩色词句）
+data/handbook.js             知识点手册词条（100 条知识点 / 969 条彩色片段）
 data/manual.js               知识点手册原页排版与全文（25 页 / 100 张卡）
+data/auth-config.js          云同步后端配置（Supabase URL / anon key，留空则不启用）
+assets/account.js            账号与云同步（注册 / 登录 / 合并同步）
 build/build_data.py          题库 + 答案 → questions.js
 build/import_answers.py      答案导入 / 生成模板
 build/import_prompt.ps1      导入向导（给 bat 调用）

@@ -58,6 +58,8 @@
       try {
         localStorage.setItem(key, JSON.stringify(value));
       } catch (e) { /* file:// 下个别浏览器禁用存储，忽略 */ }
+      // 账号模块据此把改动推到云端（未登录/未配置时它自己会忽略）
+      if (!suspendTouch && window.ZZ_ACCOUNT) window.ZZ_ACCOUNT.touch();
     },
     del(key) {
       try { localStorage.removeItem(key); } catch (e) {}
@@ -66,6 +68,7 @@
 
   let manual = store.get(KEY_STORE, {});
   let progress = store.get(KEY_PROGRESS, {});
+  let suspendTouch = false; // 从云端套用数据时不要再触发上传
 
   // 记录题库原始答案，全部重置时把手填覆盖还原回去
   const originalAnswers = new Map(
@@ -1817,6 +1820,50 @@
     state.id = startId;
     render();
   }
+
+  /* ---------------- 账号 / 云同步对接 ---------------- */
+  // 给 assets/account.js 用：取出本机数据、套用云端数据、重绘
+  window.ZZ_APP = {
+    snapshot() {
+      return {
+        settings: JSON.parse(JSON.stringify(settings)),
+        progress: JSON.parse(JSON.stringify(progress))
+      };
+    },
+    apply(payload) {
+      if (!payload) return;
+      suspendTouch = true;
+      try {
+        if (payload.progress && typeof payload.progress === 'object') {
+          progress = payload.progress;
+          store.set(KEY_PROGRESS, progress);
+        }
+        if (payload.settings && typeof payload.settings === 'object') {
+          Object.keys(settings).forEach((k) => { delete settings[k]; });
+          Object.assign(settings, payload.settings);
+          state.autoNext = settings.autoNext !== false;
+          state.autoNextMs = clampAutoNextMs(settings.autoNextMs);
+          state.showKw = settings.showKw !== false;
+          if (!state.paper) {
+            state.quiz = settings.quiz !== undefined ? settings.quiz !== false : hasAnswers;
+          }
+          store.set(KEY_SETTINGS, settings);
+          document.body.classList.toggle('card-mode', !state.quiz);
+        }
+      } finally {
+        suspendTouch = false;
+      }
+      render();
+    },
+    render,
+    toast(text) {
+      const el = document.getElementById('progressText');
+      if (!el) return;
+      const old = el.textContent;
+      el.textContent = text;
+      setTimeout(() => { if (el.textContent === text) el.textContent = old; }, 2600);
+    }
+  };
 
   init();
 })();
