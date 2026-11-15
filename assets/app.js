@@ -285,30 +285,9 @@
     store.set(KEY_SETTINGS, {
       subject: state.subject, part: state.part, type: state.type, quiz: state.quiz, id: state.id,
       autoNext: state.autoNext, autoNextMs: state.autoNextMs, showKw: state.showKw,
-      kb: settings.kb || {}, // 知识点卡片的复习进度（k → 勾选时间戳）
-      mem: settings.mem || {} // 背题模式的记忆程度（题目 id → {level, ts}）
+      kb: settings.kb || {}, // 知识点卡片的「已复习」勾选（k → 时间戳）
+      kbMem: settings.kbMem || {} // 知识点卡片的三档记忆（k → {level, ts}），与选择题错题分开
     });
-  }
-
-  /* ---------------- 记忆程度（熟记 / 模糊 / 未掌握） ---------------- */
-  const MEM_LABEL = { known: '熟记', fuzzy: '模糊', unknown: '未掌握' };
-
-  function memStore() {
-    if (!settings.mem || typeof settings.mem !== 'object') settings.mem = {};
-    return settings.mem;
-  }
-  function memLevel(id) {
-    const m = memStore()[id];
-    return m && MEM_LABEL[m.level] ? m.level : '';
-  }
-  function setMem(id, level) {
-    const m = memStore();
-    if (m[id] && m[id].level === level) delete m[id]; // 再点一次取消
-    else m[id] = { level, ts: Date.now() };
-    saveSettings();
-  }
-  function memCount(level) {
-    return Object.keys(memStore()).filter((id) => memStore()[id].level === level).length;
   }
 
   /* ---------------- 关键词标记 ---------------- */
@@ -322,10 +301,10 @@
     return '限定 / 陷阱词：注意前提、主体与范围';
   }
 
-  // 关键词只在「背题模式 + 已点显示答案」之后出现：
-  // 自测模式、卡片复习、背题未看答案时都只显示纯题目文本。
+  // 关键词只在「答案已经展开」时出现：自测提交后、点过「直接看答案」、套卷提交后。
+  // 答之前只显示纯题目文本，避免标注泄题。
   function kwVisible() {
-    return !!state.showKw && !state.quiz && state.revealed;
+    return !!state.showKw && state.revealed;
   }
 
   // 在已转义的文本上包 <span class="kw kw-xxx" data-tip>；
@@ -362,6 +341,13 @@
   }
 
   function renderCard() {
+    if (!state.quiz) {
+      // 背题模式：主区整块换成知识点卡片（全屏单张翻阅），不再出选择题
+      cardEl.innerHTML = MAN_CARDS.length
+        ? deckHTML()
+        : '<div class="empty-state">手册卡片数据还没加载好。</div>';
+      return;
+    }
     const q = findById(state.id);
     if (!q) {
       cardEl.innerHTML = '<div class="empty-state">输入题号，或点击右侧题号开始。</div>';
@@ -450,19 +436,10 @@
       actions = `<button class="btn primary" id="revealBtn" title="显示答案后才会出现关键词标注">${revealed ? '收起答案' : '显示答案'}</button>
         <button class="btn ghost" id="prevBtn" ${idx <= 0 ? 'disabled' : ''}>← 上一题</button>
         <button class="btn ghost" id="nextBtn" ${idx >= list.length - 1 ? 'disabled' : ''}>下一题 →</button>
-        <span class="hint">${revealed ? '答案与关键词标注已展开' : '背题模式：先自己回忆，再点「显示答案」'}</span>`;
+        <span class="hint">${revealed ? '答案与关键词标注已展开' : '先自己作答，再展开答案'}</span>`;
     }
 
-    // 背题模式才有的记忆程度标记，自测与卡片复习都不出现
-    const memRow = state.quiz ? '' : `
-      <div class="mem-row">
-        <span class="mem-label">记忆程度</span>
-        ${['known', 'fuzzy', 'unknown'].map((lv) =>
-          `<button class="mem-btn${memLevel(q.id) === lv ? ' on ' + lv : ''}" data-mem="${lv}">${MEM_LABEL[lv]}</button>`).join('')}
-        <span class="mem-hint">${memLevel(q.id)
-          ? '已记：' + MEM_LABEL[memLevel(q.id)] + ' · ' + new Date(settings.mem[q.id].ts).toLocaleDateString('zh-CN')
-          : '标记后进复习中心，按记忆程度汇总'}</span>
-      </div>`;
+    // 记忆程度只属于知识点卡片（见 kdeck-mem），题目上不再出现
 
     // 复习清单的进度条（从复习中心「一键生成清单」进来时出现）
     const qbar = reviewQueue.length ? `
@@ -498,11 +475,8 @@
         </div>`;
       }
     } else if (!state.quiz) {
-      // 背题模式：答题区域就是一个「点击出答案」的按钮
-      answerBox = `<button class="answer-veil" id="veilBtn">
-        <b>点击显示答案</b>
-        <span>答案、解析，以及手册里对应的关键词标注</span>
-      </button>`;
+      // 背题模式已整块换成知识点卡片（renderCard 开头 return），这里不会走到
+      answerBox = '';
     }
 
     cardEl.innerHTML = `${head}${dupeRow}
@@ -511,7 +485,6 @@
       ${verdict}
       ${qbar}
       <div class="card-actions">${actions}</div>
-      ${memRow}
       ${answerBox}`;
 
     bindCardEvents(q, list, idx, revealed);
@@ -565,27 +538,6 @@
 
     const submitBtn = $('submitBtn');
     if (submitBtn) submitBtn.addEventListener('click', () => submitAnswer());
-
-    // 背题模式的「点击显示答案」占位块
-    const veilBtn = $('veilBtn');
-    if (veilBtn) {
-      veilBtn.addEventListener('click', () => {
-        clearAutoNext();
-        state.revealed = true;
-        markSeen(q);
-        renderCard();
-        renderGrid();
-        renderFilters();
-      });
-    }
-
-    // 记忆程度：点了就记，再点同一个取消
-    cardEl.querySelectorAll('[data-mem]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        setMem(q.id, btn.dataset.mem);
-        renderCard();
-      });
-    });
 
     // 复习清单内翻题
     cardEl.querySelectorAll('[data-qnav]').forEach((btn) => {
@@ -750,14 +702,9 @@
     suggestEl.hidden = false;
     suggestEl.querySelectorAll('button').forEach((b) => {
       b.addEventListener('click', () => {
-        const q = findById(b.dataset.id);
-        state.subject = q.subject;
-        state.part = q.subject === '马克思主义哲学' ? q.part : '';
-        state.type = q.type;
         suggestEl.hidden = true;
         $('searchInput').value = '';
-        render();
-        showQuestion(q.id, true);
+        jumpToQuestion(b.dataset.id);
       });
     });
   }
@@ -796,12 +743,7 @@
     });
     $('modalContent').querySelectorAll('.wrong-item').forEach((el) => {
       el.addEventListener('click', () => {
-        const q = findById(el.dataset.id);
-        state.subject = q.subject;
-        state.part = q.subject === '马克思主义哲学' ? q.part : '';
-        state.type = q.type;
-        render();
-        showQuestion(q.id, true);
+        jumpToQuestion(el.dataset.id);
         closeModal();
       });
     });
@@ -860,18 +802,14 @@
           <input type="checkbox" id="kwCb" ${state.showKw ? 'checked' : ''}>
           <span>在题目里标出关键词</span>
         </label>
-        <span class="pref-hint">只在背题模式点「显示答案」后出现；自测与卡片复习只显示纯题目</span>
+        <span class="pref-hint">答题之后（提交或直接看答案）才出现；答题前只显示纯题目</span>
       </div>
       <div class="pref-row">
-        <span class="pref"><b style="font-weight:600">记忆程度</b>　熟记 ${memCount('known')} · 模糊 ${memCount('fuzzy')} · 未掌握 ${memCount('unknown')}</span>
-        <button class="btn ghost" id="rvFromStats">打开复习中心</button>
+        <span class="pref"><b style="font-weight:600">知识点卡片</b>　熟悉 ${kbMemCount('known')} · 模糊 ${kbMemCount('fuzzy')} · 未掌握 ${kbMemCount('unknown')} · 已复习 ${kbDoneCount()} / ${MAN_CARDS.length}</span>
+        <button class="btn ghost" id="kbFromStats">打开卡片</button>
+        <button class="btn ghost" id="rvFromStats">复习中心</button>
         <button class="btn ghost" id="paperFromStats">组一套卷</button>
-        <span class="pref-hint">背题模式里标记，复习中心按日期和学科汇总</span>
-      </div>
-      <div class="pref-row">
-        <span class="pref"><b style="font-weight:600">知识点手册</b>　已复习 ${kbDoneCount()} / ${KB_POINTS.length} 张卡</span>
-        <button class="btn ghost" id="kbFromStats">打开卡片复习</button>
-        <span class="pref-hint">勾选进度记在本机，手机可左右滑动翻卡</span>
+        <span class="pref-hint">三档记忆只记在卡片上，与选择题错题分开存</span>
       </div>
       <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn" id="exportBtn">导出做题记录</button>
@@ -971,9 +909,12 @@
     }
     store.set(KEY_PROGRESS, progress);
     if (mode === 'all') {
-      settings.kb = {}; // 全部重置同时清空知识点卡片进度
-      settings.mem = {}; // 以及记忆程度标记
+      // 统一清空：卡片已复习 + 卡片三档记忆（选择题错题已经在上面清掉了）
+      settings.kb = {};
+      settings.kbMem = {};
       saveSettings();
+      deck.shown = Object.create(null);
+      deck.idx = 0;
     }
     clearQueue();
     clearAutoNext();
@@ -1062,9 +1003,54 @@
   function kbIsDone(k) { return !!kbStore()[k]; }
   function kbDoneCount() { return KB_POINTS.filter((p) => kbIsDone(p.k)).length; }
 
-  /* ---------------- 知识点手册：按 PDF 原页、原顺序直排 ---------------- */
+  /* ---------------- 知识点卡片：全屏单张翻阅 ---------------- */
   const MAN_PAGES = (window.ZZ_MANUAL && window.ZZ_MANUAL.pages) || [];
-  let manBuilt = false;
+  const MAN_CARDS = [];
+  MAN_PAGES.forEach((page) => {
+    (page.cols || []).forEach((col) => col.forEach((c) => {
+      MAN_CARDS.push({ k: c.k, title: c.title, paras: c.paras || [], printed: page.printed, sections: page.sections || [] });
+    }));
+  });
+  MAN_CARDS.sort((a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
+  const CARD_BY_K = new Map(MAN_CARDS.map((c, i) => [c.k, i]));
+
+  const KB_LEVELS = ['known', 'fuzzy', 'unknown'];
+  const KB_LEVEL_LABEL = { known: '熟悉', fuzzy: '模糊', unknown: '未掌握' };
+  const CARD_SUBJECT = { 马原: '马克思主义哲学', 史纲: '史纲要', 毛中特: '毛中特+习思想', 思法: '思法', 当代: '思法' };
+
+  function cardSubject(card) {
+    const sec = (card.sections || [])[0];
+    return CARD_SUBJECT[sec] || '';
+  }
+
+  // 卡片的三档记忆与选择题错题分开存：settings.kbMem / settings.progress
+  function kbMemStore() {
+    if (!settings.kbMem || typeof settings.kbMem !== 'object') settings.kbMem = {};
+    return settings.kbMem;
+  }
+  function kbMemLevel(k) {
+    const e = kbMemStore()[k];
+    return (e && e.level) || '';
+  }
+  function setKbMem(k, level) {
+    const st = kbMemStore();
+    if (st[k] && st[k].level === level) delete st[k];
+    else st[k] = { level: level, ts: Date.now() };
+    saveSettings();
+  }
+  function kbMemCount(level) {
+    let n = 0;
+    MAN_CARDS.forEach((c) => { if (kbMemLevel(c.k) === level) n++; });
+    return n;
+  }
+  function kbMarkedCount() {
+    let n = 0;
+    MAN_CARDS.forEach((c) => { if (kbMemLevel(c.k)) n++; });
+    return n;
+  }
+
+  // 浏览位置：背题模式内嵌的卡片与全屏浮层共用同一份
+  const deck = { idx: 0, shown: Object.create(null) };
 
   function kwCls(c) {
     return c === 'core' ? 'kw-core' : c === 'ok' ? 'kw-ok' : c === 'none' ? 'kw-none' : 'kw-limit';
@@ -1092,74 +1078,98 @@
     return out;
   }
 
-  function manCard(card) {
-    const point = KB_BY_K.get(card.k) || { items: [] };
-    const rel = kbRelated(card.k);
-    const done = kbIsDone(card.k);
-    return '<article class="mcard" id="kbCard-' + esc(card.k) + '" data-k="' + esc(card.k) + '">'
-      + '<div class="mcard-top">'
-      + '<span class="mcard-k">知识点 ' + esc(card.k) + '</span>'
-      + '<label class="mcard-done"><input type="checkbox" data-done="' + esc(card.k) + '"'
-      + (done ? ' checked' : '') + '><span>已复习</span></label>'
-      + '</div>'
-      + '<h3 class="mcard-title">' + esc((KB_BY_K.get(card.k) || {}).title || card.title) + '</h3>'
-      + '<div class="mcard-body">'
-      + (card.paras || []).map((p) => '<p>' + kbHl(p, point.items) + '</p>').join('')
-      + '</div>'
-      + (rel.length
-        ? '<div class="mcard-rel"><div class="mcard-rel-head">相关真题 ' + rel.length + ' 道</div>'
-          + rel.map((q) => '<button class="kb-q" data-q="' + esc(q.id) + '">'
-            + esc(q.type) + ' ' + q.no + '<i>' + q.year + '</i></button>').join('')
-          + '</div>'
-        : '')
-      + '</article>';
+  function deckSub(card) {
+    const tags = (card.sections || []).join(' · ');
+    return [card.printed, tags].filter(Boolean).join(' · ');
   }
 
-  function buildManual() {
-    const deck = $('kbDeck');
-    deck.innerHTML = MAN_PAGES.map((page) => {
-      const n = page.cols.reduce((sum, col) => sum + col.length, 0);
-      const head = '<div class="mpage-head">'
-        + '<span class="mpage-no">' + esc(page.printed) + '</span>'
-        + (page.sections || []).map((s) => '<span class="mpage-tag">' + esc(s) + '</span>').join('')
-        + '<span class="mpage-count">' + n + ' 张</span>'
-        + '</div>';
-      const cols = page.cols.map((col) => '<div class="mpage-col">'
-        + col.map(manCard).join('') + '</div>').join('');
-      return '<section class="mpage" data-page="' + esc(page.printed) + '">' + head
-        + '<div class="mpage-cols">' + cols + '</div></section>';
-    }).join('');
-    manBuilt = true;
+  function deckMarkedHTML(k) {
+    const lv = kbMemLevel(k);
+    const at = lv && kbMemStore()[k] ? kbMemStore()[k].ts : 0;
+    return `<div class="kdeck-mem">
+      <span class="kdeck-mem-label">记忆程度</span>
+      ${KB_LEVELS.map((x) => `<button class="mem-btn${lv === x ? ' on ' + x : ''}" data-kbmem="${x}">${KB_LEVEL_LABEL[x]}</button>`).join('')}
+      <span class="kdeck-mem-hint">${lv
+        ? '已记：' + KB_LEVEL_LABEL[lv] + ' · ' + new Date(at).toLocaleDateString('zh-CN')
+        : '标记后进复习中心汇总；与选择题错题分开记录'}</span>
+    </div>`;
+  }
+
+  function deckCardHTML(i) {
+    const card = MAN_CARDS[i];
+    if (!card) return '<div class="empty-state">手册数据还没加载好。</div>';
+    const point = KB_BY_K.get(card.k) || { items: [] };
+    const shown = !!deck.shown[card.k];
+    const rel = kbRelated(card.k);
+    const body = shown
+      ? `<div class="kdeck-paras">${(card.paras || []).map((p) => '<p>' + kbHl(p, point.items) + '</p>').join('')}</div>`
+        + (rel.length
+          ? `<div class="kdeck-rel"><div class="kdeck-rel-head">相关真题 ${rel.length} 道 · 点一下回到题目</div>`
+            + rel.map((q) => `<button class="kb-q" data-q="${esc(q.id)}">${esc(q.type)} ${q.no}<i>${q.year}</i></button>`).join('')
+            + '</div>'
+          : '')
+        + deckMarkedHTML(card.k)
+      : `<button class="kdeck-veil" data-reveal>
+           <b>点击查看这张卡</b>
+           <span>先自己回忆：这个知识点讲什么，再点开对照全文</span>
+         </button>`;
+    return `<article class="kdeck-card${shown ? ' shown' : ''}" data-k="${esc(card.k)}">
+      <div class="kdeck-head">
+        <span class="kdeck-k">知识点 ${esc(card.k)}</span>
+        <span class="kdeck-page">${esc(deckSub(card))}</span>
+        <span class="kdeck-pos">${i + 1} / ${MAN_CARDS.length}</span>
+      </div>
+      <h2 class="kdeck-title">${esc((KB_BY_K.get(card.k) || {}).title || card.title)}</h2>
+      <div class="kdeck-body">${body}</div>
+    </article>`;
+  }
+
+  function deckNavHTML() {
+    return `<div class="kdeck-nav">
+      <button class="btn ghost" data-knav="-1" ${deck.idx <= 0 ? 'disabled' : ''}>← 上一张</button>
+      <span class="kdeck-count">${MAN_CARDS.length ? deck.idx + 1 : 0} / ${MAN_CARDS.length}</span>
+      <button class="btn ghost" data-knav="1" ${deck.idx >= MAN_CARDS.length - 1 ? 'disabled' : ''}>下一张 →</button>
+    </div>`;
+  }
+
+  function deckHTML() {
+    return '<div class="kdeck">' + deckCardHTML(deck.idx) + deckNavHTML() + '</div>';
+  }
+
+  function deckGo(delta) {
+    const next = Math.min(Math.max(deck.idx + delta, 0), MAN_CARDS.length - 1);
+    if (next === deck.idx) return;
+    deck.idx = next;
+    renderDeck();
+  }
+
+  function deckSet(k) {
+    if (CARD_BY_K.has(k)) deck.idx = CARD_BY_K.get(k);
+    deck.shown[k] = true;
+    renderDeck();
+  }
+
+  function renderDeck() {
+    if (!$('kbOverlay').hidden) {
+      $('kbDeck').innerHTML = deckHTML();
+      $('kbSub').textContent = kbSubText();
+      $('kbDeck').scrollTop = 0;
+    }
+    if (MAN_CARDS.length && !state.quiz) cardEl.innerHTML = deckHTML();
   }
 
   function kbSubText() {
-    const total = KB_POINTS.length;
-    const done = kbDoneCount();
-    return '手册 P05–P29 · ' + MAN_PAGES.length + ' 页 · ' + total + ' 张卡 · 已复习 ' + done + ' / ' + total;
-  }
-
-  function renderKb() {
-    if ($('kbOverlay').hidden) return;
-    if (!manBuilt) buildManual();
-    $('kbSub').textContent = kbSubText();
+    return '手册 P05–P29 · ' + MAN_CARDS.length + ' 张卡 · 已标记 ' + kbMarkedCount()
+      + ' · 熟悉 ' + kbMemCount('known') + ' · 模糊 ' + kbMemCount('fuzzy') + ' · 未掌握 ' + kbMemCount('unknown');
   }
 
   function openKb(k) {
-    if (!KB_POINTS.length) return;
+    if (!MAN_CARDS.length) return;
     clearAutoNext();
     $('kbOverlay').hidden = false;
     document.body.classList.add('kb-open');
-    if (!manBuilt) buildManual();
-    renderKb();
-    const deck = $('kbDeck');
-    const target = k ? $('kbCard-' + k) : null;
-    if (target) {
-      target.scrollIntoView({ block: 'center' });
-      target.classList.add('hit');
-      setTimeout(() => target.classList.remove('hit'), 1600);
-    } else {
-      deck.scrollTop = 0;
-    }
+    if (k && CARD_BY_K.has(k)) { deck.idx = CARD_BY_K.get(k); deck.shown[k] = true; }
+    renderDeck();
   }
 
   function closeKb() {
@@ -1174,29 +1184,54 @@
     state.subject = q.subject;
     state.part = q.subject === '马克思主义哲学' ? (q.part || '') : '';
     state.type = q.type;
+    state.quiz = true;
+    state.submitted = false;
+    state.picked = [];
+    state.revealed = false;
+    document.body.classList.remove('card-mode');
     render();
     showQuestion(q.id, true);
+  }
+
+  // 卡片交互：翻页 / 展开 / 记忆档位 / 跳真题（委托到常驻容器，页面重绘不用重绑）
+  function deckClick(e) {
+    const t = e.target;
+    if (!t || !t.closest) return;
+    const card = t.closest('.kdeck-card');
+    const k = card ? card.dataset.k : '';
+    const nav = t.closest('[data-knav]');
+    if (nav) { e.preventDefault(); deckGo(Number(nav.dataset.knav)); return; }
+    const rev = t.closest('[data-reveal]');
+    if (rev && k) { e.preventDefault(); deck.shown[k] = true; renderDeck(); return; }
+    const lv = t.closest('[data-kbmem]');
+    if (lv && k) { e.preventDefault(); setKbMem(k, lv.dataset.kbmem); renderDeck(); return; }
+    const rel = t.closest('[data-q]');
+    if (rel) { e.preventDefault(); kbOpenQuestion(rel.dataset.q); }
   }
 
   function bindKb() {
     $('kbBtn').addEventListener('click', () => openKb());
     $('kbClose').addEventListener('click', closeKb);
-
     $('kbOverlay').addEventListener('click', (e) => {
-      const t = e.target;
-      if (t.id === 'kbOverlay') { closeKb(); return; }
-      const rel = t.closest('[data-q]');
-      if (rel) { kbOpenQuestion(rel.dataset.q); }
+      if (e.target && e.target.id === 'kbOverlay') { closeKb(); return; }
+      deckClick(e);
     });
+    cardEl.addEventListener('click', deckClick);
 
-    $('kbOverlay').addEventListener('change', (e) => {
-      const k = e.target.dataset ? e.target.dataset.done : null;
-      if (!k) return;
-      if (e.target.checked) kbStore()[k] = Date.now();
-      else delete kbStore()[k];
-      saveSettings();
-      $('kbSub').textContent = kbSubText();
-    });
+    let sx = 0;
+    let sy = 0;
+    const start = (e) => { const p = e.touches[0]; sx = p.clientX; sy = p.clientY; };
+    const end = (e) => {
+      const p = e.changedTouches[0];
+      const dx = p.clientX - sx;
+      const dy = p.clientY - sy;
+      if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy) * 1.6) deckGo(dx < 0 ? 1 : -1);
+    };
+    if (!$('kbOverlay').hidden || !state.quiz) { /* noop, 只是占位 */ }
+    $('kbDeck').addEventListener('touchstart', start, { passive: true });
+    $('kbDeck').addEventListener('touchend', end, { passive: true });
+    cardEl.addEventListener('touchstart', start, { passive: true });
+    cardEl.addEventListener('touchend', end, { passive: true });
   }
 
   /* ---------------- 复习清单队列 ---------------- */
@@ -1211,6 +1246,16 @@
     state.subject = q.subject;
     state.part = q.subject === '马克思主义哲学' ? (q.part || '') : '';
     state.type = q.type;
+    // 背题模式现在是卡片，跳题时切回自测视图
+    if (!state.quiz) {
+      state.quiz = true;
+      state.submitted = false;
+      state.revealed = false;
+      state.picked = [];
+      document.body.classList.remove('card-mode');
+      renderFilters();
+      renderGrid();
+    }
     showQuestion(q.id, true);
     renderFilters();
   }
@@ -1259,17 +1304,18 @@
   }
 
   function rvBuckets() {
-    const out = { wrong: [], unknown: [], fuzzy: [], known: [] };
+    const out = { wrong: [], cards: { known: 0, fuzzy: 0, unknown: 0, none: 0, total: 0 } };
     DATA.questions.forEach((q) => {
       if (rvView.subject !== 'all' && q.subject !== rvView.subject) return;
       const p = progress[q.id];
       if (p && p.correct === false && rvInRange(p.ts || 0)) out.wrong.push(q);
-      const m = memStore()[q.id];
-      if (m && rvInRange(m.ts || 0)) {
-        if (m.level === 'known') out.known.push(q);
-        else if (m.level === 'fuzzy') out.fuzzy.push(q);
-        else if (m.level === 'unknown') out.unknown.push(q);
-      }
+    });
+    MAN_CARDS.forEach((c) => {
+      if (rvView.subject !== 'all' && cardSubject(c) !== rvView.subject) return;
+      out.cards.total++;
+      const lv = kbMemLevel(c.k);
+      if (lv && out.cards[lv] !== undefined) out.cards[lv]++;
+      else out.cards.none++;
     });
     return out;
   }
@@ -1295,11 +1341,11 @@
   function renderReview() {
     if ($('rvOverlay').hidden) return;
     const b = rvBuckets();
-    const total = b.wrong.length + b.unknown.length + b.fuzzy.length + b.known.length;
+    const total = b.wrong.length + b.cards.total - b.cards.none;
     const label = rvView.date ? rvView.date
       : rvView.range === 'today' ? '今天'
         : rvView.range === '7' ? '近 7 天' : rvView.range === '30' ? '近 30 天' : '全部日期';
-    $('rvSub').textContent = `${label} · ${rvView.subject === 'all' ? '全部学科' : rvView.subject} · 共 ${total} 条记录`;
+    $('rvSub').textContent = `${label} · ${rvView.subject === 'all' ? '全部学科' : rvView.subject} · 错题 ${b.wrong.length} 道 · 卡片标记 ${b.cards.total - b.cards.none} 张`;
 
     $('rvRange').querySelectorAll('button').forEach((btn) => {
       btn.classList.toggle('active', !rvView.date && btn.dataset.range === rvView.range);
@@ -1311,37 +1357,60 @@
     ).join('');
 
     $('rvGrid').innerHTML = `
-      <div class="rv-card wrong"><b>错题</b><i>${b.wrong.length}</i><span>做错且还没做对的题</span></div>
-      <div class="rv-card unknown"><b>未掌握</b><i>${b.unknown.length}</i><span>背题时标记为未掌握</span></div>
-      <div class="rv-card fuzzy"><b>模糊</b><i>${b.fuzzy.length}</i><span>背题时标记为模糊</span></div>
-      <div class="rv-card known"><b>熟记</b><i>${b.known.length}</i><span>背题时标记为熟记</span></div>`;
+      <div class="rv-card wrong"><b>选择题错题</b><i>${b.wrong.length}</i><span>做错且还没做对的题</span></div>
+      <div class="rv-card known"><b>卡片 · 熟悉</b><i>${b.cards.known}</i><span>背卡片时标为熟悉</span></div>
+      <div class="rv-card fuzzy"><b>卡片 · 模糊</b><i>${b.cards.fuzzy}</i><span>背卡片时标为模糊</span></div>
+      <div class="rv-card unknown"><b>卡片 · 未掌握</b><i>${b.cards.unknown}</i><span>背卡片时标为未掌握</span></div>`;
+
+    const kbSec = `<section class="rv-sec">
+      <div class="rv-sec-head">知识点卡片<span>已标记 ${b.cards.total - b.cards.none} / ${b.cards.total} 张</span></div>
+      <div class="rv-kb-entry">
+        <button class="btn primary" id="rvKbOpen">打开卡片复习</button>
+        <button class="btn ghost" id="rvKbUnknown" ${b.cards.unknown ? '' : 'disabled'}>从未掌握开始</button>
+        <button class="btn ghost" id="rvKbFuzzy" ${b.cards.fuzzy ? '' : 'disabled'}>从模糊开始</button>
+        <span class="rv-gen-hint">卡片是全屏单张翻阅的；三档记忆和下面的选择题错题分开记</span>
+      </div>
+    </section>`;
 
     $('rvBody').innerHTML = `
-      ${rvSection('错题', b.wrong, '错', '这段时间没有错题。')}
-      ${rvSection('未掌握', b.unknown, '未掌握', '还没有未掌握的标记。')}
-      ${rvSection('模糊', b.fuzzy, '模糊', '还没有模糊的标记。')}
-      ${rvSection('熟记', b.known, '熟记', '还没有熟记的标记。')}
+      ${kbSec}
+      ${rvSection('选择题错题', b.wrong, '错', '这段时间没有错题。')}
       <div class="rv-gen">
         <button class="btn primary" id="rvGen">一键生成当天复习清单</button>
-        <span class="rv-gen-hint">按「错题 → 未掌握 → 模糊」排序，熟记不重复刷</span>
+        <span class="rv-gen-hint">只收选择题错题，按「错题」排列</span>
       </div>
       <div id="rvList"></div>`;
 
+    const kbOpen = $('rvKbOpen');
+    if (kbOpen) kbOpen.addEventListener('click', () => { closeReview(); openKb(); });
+    const startFrom = (level) => {
+      const list = MAN_CARDS.filter((c) => kbMemLevel(c.k) === level
+        && (rvView.subject === 'all' || cardSubject(c) === rvView.subject));
+      if (!list.length) return;
+      closeReview();
+      deck.idx = CARD_BY_K.get(list[0].k);
+      openKb(list[0].k);
+    };
+    const kbUnknown = $('rvKbUnknown');
+    if (kbUnknown) kbUnknown.addEventListener('click', () => startFrom('unknown'));
+    const kbFuzzy = $('rvKbFuzzy');
+    if (kbFuzzy) kbFuzzy.addEventListener('click', () => startFrom('fuzzy'));
+
     const gen = $('rvGen');
-    gen.disabled = !(b.wrong.length || b.unknown.length || b.fuzzy.length);
+    gen.disabled = !b.wrong.length;
     gen.addEventListener('click', () => {
-      const ids = [...b.wrong, ...b.unknown, ...b.fuzzy].map((q) => q.id).filter((id, i, arr) => arr.indexOf(id) === i);
+      const ids = b.wrong.map((q) => q.id).filter((id, i, arr) => arr.indexOf(id) === i);
       rvGenerated = ids;
       const box = $('rvList');
       if (!ids.length) {
-        box.innerHTML = '<div class="rv-empty">这段时间没有需要复习的题，去自测或背题记几条吧。</div>';
+        box.innerHTML = '<div class="rv-empty">这段时间没有错题，去自测或组套卷刷几道吧。</div>';
         return;
       }
       box.innerHTML = `<div class="rv-list-wrap">
         <div class="rv-list-head">复习清单 · ${ids.length} 题</div>
         <ol class="rv-list">${ids.map((id) => {
           const q = findById(id);
-          return `<li>${rvItem(q, MEM_LABEL[memLevel(id)] || (progress[id] && progress[id].correct === false ? '错题' : '复习'))}</li>`;
+          return `<li>${rvItem(q, '错题')}</li>`;
         }).join('')}</ol>
         <div class="rv-list-actions">
           <button class="btn primary" id="rvStart">从第 1 题开始</button>
@@ -1541,6 +1610,13 @@
     });
 
     $('randomBtn').addEventListener('click', () => {
+      // 背题模式现在是卡片：随机翻一张卡
+      if (!state.quiz) {
+        deck.idx = Math.floor(Math.random() * MAN_CARDS.length);
+        renderDeck();
+        renderFilters();
+        return;
+      }
       const list = currentList();
       const q = list[Math.floor(Math.random() * list.length)];
       if (q) showQuestion(q.id, true);
@@ -1564,8 +1640,7 @@
       state.revealed = false;
       state.picked = [];
       saveSettings();
-      renderFilters();
-      renderCard();
+      render();
     });
 
     document.addEventListener('keydown', (e) => {
@@ -1573,14 +1648,24 @@
       if (!$('kbOverlay').hidden) {
         if (e.key === 'Escape') { closeKb(); return; }
         if (tag === 'input' || tag === 'textarea') return;
-        if (e.key === 'ArrowLeft') { e.preventDefault(); kbGo(-1); return; }
-        if (e.key === 'ArrowRight') { e.preventDefault(); kbGo(1); return; }
-        if (e.key === '/') { e.preventDefault(); $('kbSearch').focus(); return; }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); deckGo(-1); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); deckGo(1); return; }
         return;
       }
       if (tag === 'input' || tag === 'textarea') return;
       if (!$('rvOverlay').hidden) { if (e.key === 'Escape') closeReview(); return; }
       if (!$('modal').hidden) { if (e.key === 'Escape') closeModal(); return; }
+
+      // 背题模式（卡片）里方向键翻卡
+      if (!state.quiz) {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); deckGo(-1); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); deckGo(1); return; }
+        if (e.key === 'Enter') {
+          const first = cardEl.querySelector('[data-reveal]');
+          if (first) { e.preventDefault(); deck.shown[MAN_CARDS[deck.idx].k] = true; renderDeck(); }
+          return;
+        }
+      }
 
       if (e.key === '/') { e.preventDefault(); $('noInput').focus(); return; }
       if (e.key.toLowerCase() === 'k') { e.preventDefault(); openKb(); return; }
@@ -1603,6 +1688,8 @@
   }
 
   function render() {
+    // 背题模式 = 知识点卡片模式：收起题目筛选与题号栏，主区整块留给卡片
+    document.body.classList.toggle('card-mode', !state.quiz);
     renderFilters();
     renderGrid();
     renderCard();
