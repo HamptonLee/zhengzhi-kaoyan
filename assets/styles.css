@@ -1321,3 +1321,18 @@ body.toc-open { overflow: hidden; }
 @media (max-width: 860px) {
   body.acct-open::after { content: ''; position: fixed; inset: 0; background: rgba(24, 20, 16, .22); pointer-events: none; z-index: 65; }
 }
+
+/* 站内确认框 */
+.cfm { position: fixed; inset: 0; z-index: 200; background: rgba(24, 20, 16, .42); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.cfm-box { background: var(--paper); border-radius: 16px; box-shadow: 0 24px 60px rgba(24, 20, 16, .24); width: min(420px, 100%); padding: 22px 24px 18px; }
+.cfm-title { margin: 0 0 8px; font-size: 16px; font-weight: 600; letter-spacing: .01em; }
+.cfm-body { margin: 0 0 18px; font-size: 13.5px; line-height: 1.72; color: var(--ink-2); }
+.cfm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.cfm-actions .btn { min-width: 82px; justify-content: center; }
+@media (max-width: 560px) {
+.cfm-box { padding: 18px 18px 14px; } .cfm-actions .btn { flex: 1; } }
+
+body.cfm-open { overflow: hidden; }
+body.cfm-open .acct-pop, body.cfm-open .ktoc { pointer-events: none; }
+
+

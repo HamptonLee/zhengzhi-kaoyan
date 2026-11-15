@@ -800,6 +800,70 @@
   }
   function closeModal() { $('modal').hidden = true; }
 
+  // 站内确认框：Enter=确定、Esc=取消、点遮罩=取消
+  /* 记录最近一次点击的按钮：程序化 click() 不会移动焦点，关闭确认框时用它还原焦点 */
+  let lastTrigger = null;
+  document.addEventListener('click', (e) => {
+    const t = e.target && e.target.closest ? e.target.closest('button, a, [data-act]') : null;
+    if (t) lastTrigger = t;
+  }, true);
+
+  function askConfirm(opts) {
+    const o = opts || {};
+    return new Promise((resolve) => {
+      const layer = document.createElement('div');
+      layer.className = 'cfm';
+      const body = String(o.body == null ? '' : o.body);
+      layer.innerHTML = `
+        <div class="cfm-box" role="dialog" aria-modal="true" aria-labelledby="cfmTitle">
+          <h3 class="cfm-title" id="cfmTitle">${esc(o.title || '确认')}</h3>
+          ${body ? `<p class="cfm-body">${esc(body).replace(/\n/g, '<br>')}</p>` : ''}
+          <div class="cfm-actions">
+            <button class="btn ghost" data-cfm="0">${esc(o.cancel || '取消')}</button>
+            <button class="btn ${o.danger ? 'danger' : 'primary'}" data-cfm="1">${esc(o.ok || '确定')}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(layer);
+      const cancelBtn = layer.querySelector('[data-cfm="0"]');
+      const prevFocus = (document.activeElement && document.activeElement !== document.body)
+        ? document.activeElement
+        : lastTrigger;
+      document.body.classList.add('cfm-open');
+      let finished = false;
+      const done = (v) => {
+        if (finished) return;
+        finished = true;
+        document.removeEventListener('keydown', onKey, true);
+        document.body.classList.remove('cfm-open');
+        layer.remove();
+        try {
+          if (prevFocus && prevFocus.isConnected && prevFocus.focus) prevFocus.focus();
+        } catch (_) {}
+        resolve(v);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); return; }
+        if (e.key === 'Enter') {
+          /* Enter 执行当前聚焦的按钮（默认是「取消」，避免误确认） */
+          const act = document.activeElement;
+          if (act && layer.contains(act) && act.hasAttribute('data-cfm')) {
+            e.preventDefault(); e.stopPropagation();
+            done(act.getAttribute('data-cfm') === '1');
+            return;
+          }
+          e.preventDefault(); e.stopPropagation(); done(true);
+        }
+      };
+      layer.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-cfm]');
+        if (btn) { done(btn.dataset.cfm === '1'); return; }
+        if (e.target === layer) done(false);
+      });
+      document.addEventListener('keydown', onKey, true);
+      requestAnimationFrame(() => { try { cancelBtn.focus(); } catch (_) {} });
+    });
+  }
+
   function showWrongBook() {
     const wrong = DATA.questions.filter((q) => progress[q.id] && progress[q.id].correct === false);
     if (!wrong.length) {
@@ -961,13 +1025,13 @@
     $('resetAll').addEventListener('click', () => resetData('all'));
   }
 
-  function resetData(mode) {
-    const message = mode === 'wrong'
-      ? '清空错题本？正确率与已做题数不受影响。'
+  async function resetData(mode) {
+    const cfg = mode === 'wrong'
+      ? { title: '清空错题本？', body: '正确率与已做题数不受影响。', ok: '清空' }
       : mode === 'progress'
-        ? '重置做题记录？\n所有题会回到未做状态，错题本清空，手填答案保留。'
-        : '全部重置？\n做题记录和手填答案都会清空，且无法恢复。';
-    if (!confirm(message)) return;
+        ? { title: '重置做题记录？', body: '所有题会回到未做状态，错题本清空，手填答案保留。', ok: '重置' }
+        : { title: '全部重置？', body: '做题记录、卡片记忆和手填答案都会清空，且无法恢复。', ok: '全部重置', danger: true };
+    if (!(await askConfirm(cfg))) return;
 
     if (mode === 'wrong') {
       Object.keys(progress).forEach((id) => {
@@ -1654,9 +1718,14 @@
     renderFilters();
   }
 
-  function quitPaper() {
+  async function quitPaper() {
     if (!state.paper) return;
-    if (!confirm('退出套卷？本次作答不会记成绩，但已答的题仍留在做题记录里。')) return;
+    const okQuit = await askConfirm({
+      title: '退出这套卷？',
+      body: '本次作答不会记成绩，但已答的题仍留在做题记录里。',
+      ok: '退出套卷',
+    });
+    if (!okQuit) return;
     const prevQuiz = state.paper.prevQuiz;
     state.paper = null;
     if (typeof prevQuiz === 'boolean') state.quiz = prevQuiz; // 退出后回到原来的模式
@@ -1692,11 +1761,20 @@
     $('paperCancel').addEventListener('click', closeModal);
   }
 
-  function finishPaper() {
+  async function finishPaper() {
     const paper = state.paper;
     if (!paper) return;
     const answered = Object.keys(paper.answers).length;
-    if (answered < paper.ids.length && !confirm(`还有 ${paper.ids.length - answered} 题没答，确定交卷？`)) return;
+    if (answered < paper.ids.length) {
+      const left = paper.ids.length - answered;
+      const okSubmit = await askConfirm({
+        title: `还有 ${left} 题没答，现在交卷？`,
+        body: '没答的题按 0 分计入成绩，交卷后可以看到逐题解析。',
+        ok: '交卷',
+        cancel: '继续作答',
+      });
+      if (!okSubmit) return;
+    }
 
     let score = 0;
     let sOk = 0;
